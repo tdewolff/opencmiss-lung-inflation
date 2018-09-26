@@ -2,7 +2,7 @@
 
 ## Running the example
 
-  python src/python/lung_inflation.py
+    python src/python/lung_inflation.py
 
 ## License
 
