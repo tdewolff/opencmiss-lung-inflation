@@ -12,11 +12,11 @@ subject = 'AP00149'
 pressure = '5cmH2O'
 registration = '5_10'
 
-c01 = 1.0
-c10 = 0.0
-c11 = 1.0e9
-density = 9.0e-4  # in g mm^-3
-gravity = [0.0, 0.0, 9.81]  # in m s^-2
+c10 = 186.0e3  # in Pa
+c01 = 9.79e3  # in Pa
+k = 100.0e6  # in Pa
+density = 1000.0  # in kg m^-3
+gravity = [0.0, -9.81, 0.0]  # in m s^-2
 
 height = 1.0
 width = 1.0
@@ -168,7 +168,7 @@ materialField.ComponentValuesInitialiseDP(
 materialField.ComponentValuesInitialiseDP(
     iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 2, c01)
 materialField.ComponentValuesInitialiseDP(
-    iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, c11)
+    iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, k)
 materialField.ComponentValuesInitialiseDP(
     iron.FieldVariableTypes.V, iron.FieldParameterSetTypes.VALUES, 1, density)
 

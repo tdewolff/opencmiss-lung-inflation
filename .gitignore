@@ -1,0 +1,3 @@
+*.swp
+src/python/results/*
+.idea/*
