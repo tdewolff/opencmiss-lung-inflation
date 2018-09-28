@@ -29,7 +29,7 @@ gfx modify g_element "/" point  glyph axes general size "75*60*60" centre 0,0,0 
 # display deformed geometry
 gfx modify g_element "Region" lines coordinate deformed_geom select_on material default selected_material default_selected
 #gfx modify g_element "Region" surfaces coordinate deformed_geom select_on material tissue selected_material default_selected data hydrostatic_pressure spectrum pressure render_shaded
-gfx modify g_element "Region" node_points coordinate deformed_geom glyph sphere General size "0.1*0.1*0.1" centre 0,0,0 font default select_on material default selected_material default_selected
+gfx modify g_element "Region" node_points coordinate deformed_geom glyph sphere General size "0.01*0.01*0.01" centre 0,0,0 font default select_on material default selected_material default_selected
 
 gfx modify spectrum pressure autorange
 gfx create colour_bar spectrum pressure material default
@@ -37,4 +37,5 @@ gfx create colour_bar spectrum pressure material default
 
 gfx edit scene
 gfx modify window 1 set antialias 2
-gfx modify window 1 view parallel eye_point 0.55 0.476731 4.02649 interest_point 0.55 0.476731 0.476731 up_vector -0 1 -0 view_angle 40 near_clipping_plane 0.177488 far_clipping_plane 7.20411 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;
+#gfx modify window 1 view parallel eye_point 0.55 0.476731 4.02649 interest_point 0.55 0.476731 0.476731 up_vector -0 1 -0 view_angle 40 near_clipping_plane 0.177488 far_clipping_plane 7.20411 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;
+gfx modify window 1 view parallel eye_point 0.1 0.1 0.5 interest_point 0.05 0.05 0.05 up_vector -0 1 -0 view_angle 40 near_clipping_plane 0.01 far_clipping_plane 10 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;

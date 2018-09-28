@@ -2,31 +2,34 @@
 
 import os
 from opencmiss.iron import iron
-import mesh_io
+#import mesh_io
 from medpy.io import load
 from medpy.io import header
-import numpy as np
+#import numpy as np
+from opencmiss.iron.iron import MeshElements
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00149'
 pressure = '5cmH2O'
 registration = '5_10'
 
-c10 = 186.0e3  # in Pa
-c01 = 9.79e3  # in Pa
-k = 100.0e6  # in Pa
+c10 = 5000.0  # in Pa
+c01 = 2000.0  # in Pa
+k = 6000.0  # in Pa
 density = 1000.0  # in kg m^-3
-gravity = [0.0, -9.81, 0.0]  # in m s^-2
+gravity = [0.0, 0.0, 0.0]  # in m s^-2
 
-height = 1.0
-width = 1.0
-length = 1.0
+applyBCs = True
+stretch = 1.2
 
-NumberOfGaussXi = 2
-numberGlobalXElements = 2
-numberGlobalYElements = 2
-numberGlobalZElements = 2
-numberOfXi = 3
+lengthX = 0.1
+lengthY = 0.1
+lengthZ = 0.1
+
+numberXElements = 2
+numberYElements = 1
+numberZElements = 1
+interpolation = iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE
 
 ##################################################################
 
@@ -69,9 +72,10 @@ decompositionUserNumber = 1
 geometricFieldUserNumber = 1
 fibreFieldUserNumber = 2
 materialFieldUserNumber = 3
-dependentFieldUserNumber = 4
-sourceFieldUserNumber = 5
-equationsSetFieldUserNumber = 6
+stressFieldUserNumber = 4
+dependentFieldUserNumber = 5
+sourceFieldUserNumber = 6
+equationsSetFieldUserNumber = 7
 equationsSetUserNumber = 1
 problemUserNumber = 1
 
@@ -92,10 +96,14 @@ region.CreateFinish()
 basis = iron.Basis()
 basis.CreateStart(basisUserNumber)
 basis.type = iron.BasisTypes.LAGRANGE_HERMITE_TP
-basis.numberOfXi = numberOfXi
-basis.interpolationXi = [iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE] * numberOfXi
-if (NumberOfGaussXi > 0):
-    basis.quadratureNumberOfGaussXi = [NumberOfGaussXi] * numberOfXi
+basis.numberOfXi = 3
+basis.interpolationXi = [interpolation] * 3
+if interpolation == iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE:
+    basis.quadratureNumberOfGaussXi = [2] * 3
+elif interpolation == iron.BasisInterpolationSpecifications.QUADRATIC_LAGRANGE:
+    basis.quadratureNumberOfGaussXi = [3] * 3
+elif interpolation == iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE:
+    basis.quadratureNumberOfGaussXi = [4] * 3
 basis.CreateFinish()
 
 #mesh, coordinates, _ = mesh_io.exfile_to_OpenCMISS('/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/5cmH2O/Lung/FEMesh/Left_Refitted.exnode',
@@ -107,8 +115,8 @@ generatedMesh = iron.GeneratedMesh()
 generatedMesh.CreateStart(generatedMeshUserNumber, region)
 generatedMesh.type = iron.GeneratedMeshTypes.REGULAR
 generatedMesh.basis = [basis]
-generatedMesh.extent = [width, length, height]
-generatedMesh.numberOfElements = [numberGlobalXElements, numberGlobalYElements, numberGlobalZElements]
+generatedMesh.extent = [lengthX, lengthY, lengthZ]
+generatedMesh.numberOfElements = [numberXElements, numberYElements, numberZElements]
 generatedMesh.CreateFinish(meshUserNumber, mesh)
 
 # Create a decomposition for the mesh
@@ -138,6 +146,19 @@ fibreField.MeshDecompositionSet(decomposition)
 fibreField.GeometricFieldSet(geometricField)
 fibreField.VariableLabelSet(iron.FieldVariableTypes.U, "Fibre")
 fibreField.CreateFinish()
+
+
+stressField = iron.Field()
+stressField.CreateStart(stressFieldUserNumber, region)
+#stressField.TypeSet(iron.FieldTypes.GENERAL)
+stressField.MeshDecompositionSet(decomposition)
+#stressField.GeometricFieldSet(geometricField)
+stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
+stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
+stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
+stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
+#stressField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
+stressField.CreateFinish()
 
 
 ##################################################################
@@ -180,19 +201,20 @@ equationsSet.DependentCreateFinish()
 
 print("Dependent field number of components (U,DELUDELN):", dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.U), dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.DELUDELN))
 
-# Setup gravity source field
-sourceField = iron.Field()
-equationsSet.SourceCreateStart(sourceFieldUserNumber, sourceField)
-sourceField.fieldScalingType = iron.FieldScalingTypes.UNIT
-equationsSet.SourceCreateFinish()
+if gravity != [0.0, 0.0, 0.0]:
+    # Setup gravity source field
+    sourceField = iron.Field()
+    equationsSet.SourceCreateStart(sourceFieldUserNumber, sourceField)
+    sourceField.fieldScalingType = iron.FieldScalingTypes.UNIT
+    equationsSet.SourceCreateFinish()
 
-#Set the gravity vector component values
-sourceField.ComponentValuesInitialiseDP(
-    iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, gravity[0])
-sourceField.ComponentValuesInitialiseDP(
-    iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 2, gravity[1])
-sourceField.ComponentValuesInitialiseDP(
-    iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, gravity[2])
+    #Set the gravity vector component values
+    sourceField.ComponentValuesInitialiseDP(
+        iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, gravity[0])
+    sourceField.ComponentValuesInitialiseDP(
+        iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 2, gravity[1])
+    sourceField.ComponentValuesInitialiseDP(
+        iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, gravity[2])
 
 # Create equations
 equations = iron.Equations()
@@ -233,12 +255,12 @@ nonLinearSolver = iron.Solver()
 linearSolver = iron.Solver()
 problem.SolversCreateStart()
 problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, nonLinearSolver)
-nonLinearSolver.outputType = iron.SolverOutputTypes.PROGRESS
+nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
 nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
 nonLinearSolver.NewtonLinearSolverGet(linearSolver)
-nonLinearSolver.NewtonAbsoluteToleranceSet(1e-14)
-nonLinearSolver.NewtonSolutionToleranceSet(1e-14)
-nonLinearSolver.NewtonRelativeToleranceSet(1e-14)
+#nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
+#nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
+#nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
 linearSolver.linearType = iron.LinearSolverTypes.DIRECT
 # linearSolver.libraryType = iron.SolverLibraries.LAPACK
 problem.SolversCreateFinish()
@@ -298,27 +320,40 @@ solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
 #
 #     print(nid, X,Y,Z, '=>', x,y,z)
 
-for nid in [1,7,19,25, 13,22,16,4,10]:
-    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-                               iron.BoundaryConditionsTypes.FIXED, 0.0)
-    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-                               iron.BoundaryConditionsTypes.FIXED, 0.0)
-    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-                               iron.BoundaryConditionsTypes.FIXED, 0.0)
+if applyBCs:
+    nodes = iron.Nodes()
+    region.NodesGet(nodes)
+    print('Number of nodes:', nodes.numberOfNodes)
 
-for nid in [3,9,21,27, 15,18,6,12,24]:
-    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-                               iron.BoundaryConditionsTypes.FIXED, 0.2)
-    #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-    #                           iron.BoundaryConditionsTypes.FIXED, 0.0)
-    #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-    #                           iron.BoundaryConditionsTypes.FIXED, 0.0)
+    for nid in range(1,nodes.numberOfNodes+1):
+        X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 1)
+        Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 2)
+        Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 3)
 
-#for nid in [26,17,8,5,2,11,20,23]:
-#    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-#                               iron.BoundaryConditionsTypes.FIXED, 0.0)
-#    boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-#                               iron.BoundaryConditionsTypes.FIXED, 0.0)
+        if X == 0.0:
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+        elif X == lengthX:
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
+                                       iron.BoundaryConditionsTypes.FIXED, lengthX*(stretch-1.0))
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+
+        elif Y == 0.0 or Z == 0.0 or Y == lengthY or Z == lengthZ:
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
+                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+
+        else:
+            print('Node unconstrained:', nid, X,Y,Z)
+
 
 solverEquations.BoundaryConditionsCreateFinish()
 
@@ -327,6 +362,24 @@ solverEquations.BoundaryConditionsCreateFinish()
 # Solve!
 ##################################################################
 problem.Solve()
+
+gaussPointNumber = 1
+userElementNumber = 1
+valuesSizes = (3,3)
+#cauchy = equationsSet.TensorInterpolateGaussPoint(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, gaussPointNumber,
+#                                         userElementNumber, valuesSizes)
+#print(cauchy)
+
+for eid in [1]:
+    cauchy = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
+                                              [1], valuesSizes)
+
+    print(eid, cauchy)
+
+stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+                                     userElementNumber, 1, 9.0)
+stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+                                     userElementNumber, 2, 1.0)
 
 if not os.path.exists("./results"):
     os.makedirs("./results")
