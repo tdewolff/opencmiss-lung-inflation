@@ -5,8 +5,7 @@ from opencmiss.iron import iron
 #import mesh_io
 from medpy.io import load
 from medpy.io import header
-#import numpy as np
-from opencmiss.iron.iron import MeshElements
+import numpy as np
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00149'
@@ -29,7 +28,7 @@ lengthZ = 0.1
 numberXElements = 2
 numberYElements = 1
 numberZElements = 1
-interpolation = iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE
+interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
 ##################################################################
 
@@ -148,17 +147,14 @@ fibreField.VariableLabelSet(iron.FieldVariableTypes.U, "Fibre")
 fibreField.CreateFinish()
 
 
-stressField = iron.Field()
-stressField.CreateStart(stressFieldUserNumber, region)
-#stressField.TypeSet(iron.FieldTypes.GENERAL)
-stressField.MeshDecompositionSet(decomposition)
-#stressField.GeometricFieldSet(geometricField)
-stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
-stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
-stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
-stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
-#stressField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
-stressField.CreateFinish()
+#stressField = iron.Field()
+#stressField.CreateStart(stressFieldUserNumber, region)
+#stressField.MeshDecompositionSet(decomposition)
+#stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
+#stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
+#stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
+#stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
+#stressField.CreateFinish()
 
 
 ##################################################################
@@ -370,16 +366,39 @@ valuesSizes = (3,3)
 #                                         userElementNumber, valuesSizes)
 #print(cauchy)
 
-for eid in [1]:
-    cauchy = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
-                                              [1], valuesSizes)
+ssFile = open('./results/ss.exdata', 'w')
+ssFile.write(' Group name: Strain-Stress\n')
+ssFile.write(' #Fields=3\n')
+ssFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
+ssFile.write('   x.  Value index= 1, #Derivatives=0\n')
+ssFile.write('   y.  Value index= 2, #Derivatives=0\n')
+ssFile.write('   z.  Value index= 3, #Derivatives=0\n')
+ssFile.write(' 2) Strain, field, rectangular cartesian, #Components=1\n')
+ssFile.write('   1.  Value index= 4, #Derivatives=0\n')
+ssFile.write(' 3) Stress, field, rectangular cartesian, #Components=1\n')
+ssFile.write('   1.  Value index= 5, #Derivatives=0\n')
 
-    print(eid, cauchy)
+ssInterp = 2
+for eid in [1,2]:
+    for xiZ in np.linspace(0.0, 1.0, ssInterp):
+        for xiY in np.linspace(0.0, 1.0, ssInterp):
+            for xiX in np.linspace(0.0, 1.0, ssInterp):
+                coords = dependentField.ParameterSetInterpolateSingleXiDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+                                                                          1, eid, [xiX, xiY, xiZ], 3)
+                strain = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN, eid,
+                                                          [xiX, xiY, xiZ], valuesSizes)
+                stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
+                                                          [xiX, xiY, xiZ], valuesSizes)
 
-stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-                                     userElementNumber, 1, 9.0)
-stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-                                     userElementNumber, 2, 1.0)
+                print(coords)
+                print(strain)
+                print(stress)
+                print()
+
+    #print(eid, cauchy)
+
+#stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+#                                     userElementNumber, 1, 9.0)
 
 if not os.path.exists("./results"):
     os.makedirs("./results")
