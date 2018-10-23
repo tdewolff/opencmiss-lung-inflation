@@ -1,41 +1,37 @@
-@exnodes=("./results/out.part0.exnode");
-@exelems=("./results/out.part0.exelem");
-
-foreach $filename (@exnodes) {
-    print "Reading $filename\n";
-    gfx read node "$filename";
-}
-foreach $filename (@exelems) {
-    print "Reading $filename\n";
-    gfx read elem "$filename";
-}
+gfx read node "./results/out.part0.exnode";
+gfx read elem "./results/out.part0.exelem";
+gfx read data "./results/values.exdata" reg Values;
+#gfx read data "./results/mask.exdata";
+gfx read node "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/25cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
+gfx read elem "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/25cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
 
 gfx define faces egroup "Region"
-
-# define deformed geometry and pressure
-#gfx define field "deformed_geom" component Dependent.1 Dependent.2 Dependent.3
-#gfx define field "hydrostatic_pressure" component Dependent.4
+gfx define field "deformed_geom" component Dependent.1 Dependent.2 Dependent.3
 
 gfx create window 1
+
+# display undeformed lines
+gfx modify g_element "Region" lines coordinate Geometry select_on material gray50 selected_material default_selected
+gfx modify g_element "/" point  glyph axes general size "50*50*100" centre 0,0,0 font default select_on material default selected_material default_selected;
+gfx modify g_element "Final" lines coordinate coordinates select_on material green selected_material default_selected
+
+gfx modify g_element "Values" data coordinate coordinates glyph diamond size "5*5*5" data Stress
+#gfx modify g_element "Mask" data coordinate coordinates glyph cross size "1*1*1" material white
+
+# display deformed geometry
+gfx modify g_element "Region" lines coordinate deformed_geom select_on material white selected_material default_selected
+#gfx modify g_element "Region" surfaces coordinate deformed_geom select_on material tissue selected_material default_selected data hydrostatic_pressure spectrum pressure render_shaded
+#gfx modify g_element "Region" node_points coordinate deformed_geom glyph sphere General size "2*2*2" centre 0,0,0 font default select_on material red selected_material default_selected
 
 #gfx create spectrum pressure
 #gfx modify spectrum pressure clear overwrite_colour
 #gfx modify spectrum pressure linear reverse range 0.0 1.0 extend_above extend_below rainbow colour_range 0 1
-
-# display undeformed lines
-gfx modify g_element "Region" lines coordinate Geometry select_on material green selected_material default_selected
-gfx modify g_element "/" point  glyph axes general size "75*60*60" centre 0,0,0 font default select_on material default selected_material default_selected;
-
-# display deformed geometry
-#gfx modify g_element "Region" lines coordinate deformed_geom select_on material default selected_material default_selected
-#gfx modify g_element "Region" surfaces coordinate deformed_geom select_on material tissue selected_material default_selected data hydrostatic_pressure spectrum pressure render_shaded
-#gfx modify g_element "Region" node_points coordinate deformed_geom glyph sphere General size "0.01*0.01*0.01" centre 0,0,0 font default select_on material default selected_material default_selected
-
 #gfx modify spectrum pressure autorange
 #gfx create colour_bar spectrum pressure material default
 #gfx modify g_element "/" point NORMALISED_WINDOW_FIT_LEFT glyph colour_bar general size "0.5*0.5*0.2" centre -0.4,0.4,0.0 select_on material default selected_material default;
 
-#gfx edit scene
-#gfx modify window 1 set antialias 2
+gfx edit scene
+gfx modify window 1 set antialias 2
 #gfx modify window 1 view parallel eye_point 0.55 0.476731 4.02649 interest_point 0.55 0.476731 0.476731 up_vector -0 1 -0 view_angle 40 near_clipping_plane 0.177488 far_clipping_plane 70.20411 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;
 #gfx modify window 1 view parallel eye_point 0.1 0.1 0.5 interest_point 0.05 0.05 0.05 up_vector -0 1 -0 view_angle 40 near_clipping_plane 0.01 far_clipping_plane 10 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;
+gfx modify window 1 view parallel eye_point 300 100 100 interest_point 170 130 -150 up_vector 0 0 1 view_angle 40 near_clipping_plane 0.01 far_clipping_plane 1000 relative_viewport ndc_placement -1 1 2 2 viewport_coordinates 0 0 1 1;

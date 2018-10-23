@@ -10,8 +10,8 @@ import mesh_tools
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00149'
-pressure = '5cmH2O'
-registration = '5_10'
+pressure = '10cmH2O'
+registration = '10_25'
 
 c10 = 5000.0  # in Pa
 c01 = 2000.0  # in Pa
@@ -19,39 +19,61 @@ k = 6000.0  # in Pa
 density = 1000.0  # in kg m^-3
 gravity = [0.0, 0.0, 0.0]  # in m s^-2
 
-stretch = 1.2
-
-lengthX = 0.1
-lengthY = 0.1
-lengthZ = 0.1
-
 interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
 ##################################################################
 
 exelemFile = path + subject + '/' + pressure + '/Lung/FEMesh/Left_RefittedNoVersion.exelem'
 exnodeFile = path + subject + '/' + pressure + '/Lung/FEMesh/Left_RefittedNoVersion.exnode'
-
-exelemFile = './cube.exelem'
-exnodeFile = './cube.exnode'
-
+coordinatesField = 'coordinates'
 displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
-displacement = {}
+#displacementFiles = './displacement/AP00149_d%s.nii'
 
-print('Load dx...')
-displacement['x'], image_header = load(displacementFiles % ('x'))
-print('Load dy...')
-displacement['y'], _ = load(displacementFiles % ('y'))
-print('Load dz...')
-displacement['z'], _ = load(displacementFiles % ('z'))
+#exelemFile = './cube_hermite.exelem'
+#exnodeFile = './cube_hermite.exnode'
+#displacementFiles = './displacement/cube_d%s.nii'
 
-displacementPixdim = header.get_pixel_spacing(image_header)
+def Pix2Coord(pixdim, i, j, k):
+    x = i * pixdim[0]
+    y = 256 - (j * pixdim[1])
+    z = -k * pixdim[2]
+    return x, y, z
 
-print('Image dimensions:', displacement['x'].shape)
-print('Voxel dimensions:', displacementPixdim)
+def Coord2Pix(pixdim, x, y, z):
+    i = x / pixdim[0]
+    j = (256-y) / pixdim[1]
+    k = -z / pixdim[2]
+    return i, j, k
 
-def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim, c10, c01, k, density, gravity):
+def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
+    (x,y,z) = Coord2Pix(pixdim,X,Y,Z)
+    x0 = np.floor(x)
+    y0 = np.floor(y)
+    z0 = np.floor(z)
+    x1 = np.ceil(x)
+    y1 = np.ceil(y)
+    z1 = np.ceil(z)
+    if x0 < 0 or y0 < 0 or z0 < 0 or x1 >= displacement.shape[0] or y1 >= displacement.shape[1] or z1 >= displacement.shape[2]:
+        print(x0,y0,z0, x1,y1,z1)
+        raise ValueError('TrilinearInterpolation: probe is outside displacement field')
+    xd = 0.0
+    yd = 0.0
+    zd = 0.0
+    if x1 > x0:
+        xd = (x - x0) / (x1 - x0)
+    if y1 > y0:
+        yd = (y - y0) / (y1 - y0)
+    if z1 > z0:
+        zd = (z - z0) / (z1 - z0)
+    c00 = displacement[x0, y0, z0] * (1 - xd) + displacement[x1, y0, z0] * xd
+    c01 = displacement[x0, y0, z1] * (1 - xd) + displacement[x1, y0, z1] * xd
+    c10 = displacement[x0, y1, z0] * (1 - xd) + displacement[x1, y1, z0] * xd
+    c11 = displacement[x0, y1, z1] * (1 - xd) + displacement[x1, y1, z1] * xd
+    c0 = c00 * (1 - yd) + c10 * yd
+    c1 = c01 * (1 - yd) + c11 * yd
+    return c0 * (1 - zd) + c1 * zd
 
+def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity):
     # Get the number of computational nodes and this computational node number
     numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
 
@@ -102,31 +124,13 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
         basis.quadratureNumberOfGaussXi = [4] * 3
     basis.CreateFinish()
 
-    #mesh, coordinates, node_nums = mesh_tools.exfile_to_OpenCMISS(exnodeFile, exelemFile, 'Geometry', region, basis, meshUserNumber, dimension=3,
-    #                                                          interpolation='hermite')
-
-    cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFile, exelemFile, 'Geometry', dimension=3,
-                                                              interpolation='hermite')
-    print('Number of hermite nodes: ', len(cubic_hermite_morphic_mesh.get_nodes()))
-    cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
-    print('Number of lagrange nodes: ', len(cubic_lagrange_morphic_mesh.get_nodes()))
     mesh, coordinates, node_nums, element_nums = mesh_tools.morphic_to_OpenCMISS(cubic_lagrange_morphic_mesh, region,
                                                                                  basis, meshUserNumber,
                                                                                  dimension=3,
-                                                                                 interpolation='cubicLagrange')
-    #mesh, coordinates, node_nums, element_nums = mesh_tools.morphic_to_OpenCMISS(cubic_hermite_morphic_mesh, region,
-    #                                                                             basis, meshUserNumber,
-    #                                                                             dimension=3,
-    #                                                                             interpolation='hermite')
+                                                                                 interpolation='cubic')
 
-    #mesh = iron.Mesh()
-    #generatedMesh = iron.GeneratedMesh()
-    #generatedMesh.CreateStart(generatedMeshUserNumber, region)
-    #generatedMesh.type = iron.GeneratedMeshTypes.REGULAR
-    #generatedMesh.basis = [basis]
-    #generatedMesh.extent = [lengthX, lengthY, lengthZ]
-    #generatedMesh.numberOfElements = [numberXElements, numberYElements, numberZElements]
-    #generatedMesh.CreateFinish(meshUserNumber, mesh)
+    print('Number of nodes:', len(node_nums))
+    print('Number of elements:', len(element_nums))
 
     # Create a decomposition for the mesh
     decomposition = iron.Decomposition()
@@ -139,13 +143,12 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     geometricField = iron.Field()
     geometricField.CreateStart(geometricFieldUserNumber, region)
     geometricField.MeshDecompositionSet(decomposition)
-    #geometricField.TypeSet(iron.FieldTypes.GEOMETRIC)
+    geometricField.TypeSet(iron.FieldTypes.GEOMETRIC)
     geometricField.VariableLabelSet(iron.FieldVariableTypes.U, "Geometry")
     geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
     geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 2, 1)
     geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 3, 1)
     geometricField.CreateFinish()
-    #generatedMesh.GeometricParametersCalculate(geometricField)
 
     # Update the geometric field parameters
     geometricField.ParameterSetUpdateStart(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES)
@@ -158,11 +161,6 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
 
     geometricField.ParameterSetUpdateFinish(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES)
 
-
-    fields = iron.Fields()
-    fields.CreateRegion(region)
-    return fields
-
     # Create a fibre field and attach it to the geometric field
     fibreField = iron.Field()
     fibreField.CreateStart(fibreFieldUserNumber, region)
@@ -172,14 +170,14 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     fibreField.VariableLabelSet(iron.FieldVariableTypes.U, "Fibre")
     fibreField.CreateFinish()
 
-    #stressField = iron.Field()
-    #stressField.CreateStart(stressFieldUserNumber, region)
-    #stressField.MeshDecompositionSet(decomposition)
-    #stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    #stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    #stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    #stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
-    #stressField.CreateFinish()
+    # stressField = iron.Field()
+    # stressField.CreateStart(stressFieldUserNumber, region)
+    # stressField.MeshDecompositionSet(decomposition)
+    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
+    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
+    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
+    # stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
+    # stressField.CreateFinish()
 
     ##################################################################
     # Setup Mooney-Rivlin equations
@@ -201,7 +199,8 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     materialField.VariableLabelSet(iron.FieldVariableTypes.V, "Density")
     equationsSet.MaterialsCreateFinish()
 
-    print("Material field number of components (U,V):", materialField.NumberOfComponentsGet(iron.FieldVariableTypes.U), materialField.NumberOfComponentsGet(iron.FieldVariableTypes.V))
+    print("Material field number of components (U,V):", materialField.NumberOfComponentsGet(iron.FieldVariableTypes.U),
+          materialField.NumberOfComponentsGet(iron.FieldVariableTypes.V))
 
     # Set Mooney-Rivlin constants c10 and c01 respectively.
     materialField.ComponentValuesInitialiseDP(
@@ -219,7 +218,9 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     dependentField.VariableLabelSet(iron.FieldVariableTypes.U, "Dependent")
     equationsSet.DependentCreateFinish()
 
-    print("Dependent field number of components (U,DELUDELN):", dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.U), dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.DELUDELN))
+    print("Dependent field number of components (U,DELUDELN):",
+          dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.U),
+          dependentField.NumberOfComponentsGet(iron.FieldVariableTypes.DELUDELN))
 
     if gravity != [0.0, 0.0, 0.0]:
         # Setup gravity source field
@@ -228,7 +229,7 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
         sourceField.fieldScalingType = iron.FieldScalingTypes.UNIT
         equationsSet.SourceCreateFinish()
 
-        #Set the gravity vector component values
+        # Set the gravity vector component values
         sourceField.ComponentValuesInitialiseDP(
             iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, gravity[0])
         sourceField.ComponentValuesInitialiseDP(
@@ -277,9 +278,9 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
     nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
     nonLinearSolver.NewtonLinearSolverGet(linearSolver)
-    #nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
-    #nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
-    #nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
+    nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
+    nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
+    nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
     linearSolver.linearType = iron.LinearSolverTypes.DIRECT
     # linearSolver.libraryType = iron.SolverLibraries.LAPACK
     problem.SolversCreateFinish()
@@ -291,87 +292,58 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, solver)
     solver.SolverEquationsGet(solverEquations)
     solverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
-    equationsSetIndex = solverEquations.EquationsSetAdd(equationsSet)
+    solverEquations.EquationsSetAdd(equationsSet)
     problem.SolverEquationsCreateFinish()
 
     # Prescribe boundary conditions (absolute nodal parameters)
     boundaryConditions = iron.BoundaryConditions()
     solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
 
-    # N = 8  # number of nodes
-    # avgRadius = 4  # in voxels
-    # for nid in range(1,N+1):
-    #     X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 1)
-    #     Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 2)
-    #     Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 3)
-    #
-    #     dx = 0
-    #     dy = 0
-    #     dz = 0
-    #     n = 0
-    #     for k in range(max(0, int(np.floor(Z-avgRadius))), min(dim[2], int(np.ceil(Z+avgRadius)+1))):
-    #         for j in range(max(0, int(np.floor(Y-avgRadius))), min(dim[1], int(np.ceil(Y+avgRadius)+1))):
-    #             for i in range(max(0, int(np.floor(X-avgRadius))), min(dim[0], int(np.ceil(X+avgRadius)+1))):
-    #                 if (i-X)**2 + (j-Y)**2 + (k-Z)**2 <= avgRadius**2:
-    #                     dx += image_dx[i,j,k]
-    #                     dy += image_dy[i,j,k]
-    #                     dz += image_dz[i,j,k]
-    #                     n += 1
-    #     dx /= n
-    #     dy /= n
-    #     dz /= n
-    #     x = X + dx
-    #     y = Y + dy
-    #     z = Z + dz
-    #
-    #     #dx = 0.0
-    #     #if X == 1.0:
-    #         #dx = 1.0
-    #         #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-    #                                #iron.BoundaryConditionsTypes.FIXED, dx)
-    #     #if nid == 1:
-    #     boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-    #                                iron.BoundaryConditionsTypes.FIXED, dx)
-    #     boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-    #                                iron.BoundaryConditionsTypes.FIXED, dy)
-    #     boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-    #                                iron.BoundaryConditionsTypes.FIXED, dz)
-    #
-    #     print(nid, X,Y,Z, '=>', x,y,z)
+    #dim = displacement['x'].shape
+    #avgRadius = 0  # in voxels
+    nodes = iron.MeshNodes()
+    mesh.NodesGet(1, nodes)
+    for nid in node_nums:
+        if nodes.NodeOnBoundaryGet(nid) == iron.MeshBoundaryTypes.ON:
+            X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+                                                     nid, 1)
+            Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+                                                     nid, 2)
+            Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+                                                     nid, 3)
 
-    nodes = iron.Nodes()
-    region.NodesGet(nodes)
-    print('Number of nodes:', nodes.numberOfNodes)
+            # if avgRadius > 0:
+            #     dx = 0
+            #     dy = 0
+            #     dz = 0
+            #     n = 0
+            #     for k in range(max(0, int(np.floor(K - avgRadius))), min(dim[2], int(np.ceil(K + avgRadius) + 1))):
+            #         for j in range(max(0, int(np.floor(J - avgRadius))), min(dim[1], int(np.ceil(J + avgRadius) + 1))):
+            #             for i in range(max(0, int(np.floor(I - avgRadius))), min(dim[0], int(np.ceil(I + avgRadius) + 1))):
+            #                 if (i - I) ** 2 + (j - J) ** 2 + (k - K) ** 2 <= avgRadius ** 2:
+            #                     dx += displacement['x'][i, j, k]
+            #                     dy += displacement['y'][i, j, k]
+            #                     dz += displacement['z'][i, j, k]
+            #                     n += 1
+            #
+            #     if n == 0:
+            #         print('No displacement field defined at: ', [X, Y, Z])
+            #         continue
+            #     dx /= n
+            #     dy /= n
+            #     dz /= n
+            # else:
 
-    for nid in range(1,nodes.numberOfNodes+1):
-        X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 1)
-        Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 2)
-        Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 3)
+            (dx, dy, dz) = TrilinearInterpolation(displacement, pixdim, X, Y, Z)
 
-        if X == 0.0:
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+                                       iron.BoundaryConditionsTypes.FIXED, -dx)
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
+                                       iron.BoundaryConditionsTypes.FIXED, -dy)
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
-        elif X == lengthX:
-            pass
-            #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-            #                           iron.BoundaryConditionsTypes.FIXED, lengthX*(stretch-1.0))
-            #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-            #                           iron.BoundaryConditionsTypes.FIXED, 0.0)
-            #boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-            #                           iron.BoundaryConditionsTypes.FIXED, 0.0)
+                                       iron.BoundaryConditionsTypes.FIXED, -dz)
 
-        elif Y == 0.0 or Z == 0.0 or Y == lengthY or Z == lengthZ:
-            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
-            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-                                       iron.BoundaryConditionsTypes.FIXED, 0.0)
-
-        else:
-            print('Node unconstrained:', nid, X,Y,Z)
+            print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X,Y,Z, dx,dy,dz))
 
     solverEquations.BoundaryConditionsCreateFinish()
 
@@ -380,58 +352,113 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
     ##################################################################
     problem.Solve()
 
-    #gaussPointNumber = 1
-    #userElementNumber = 1
-    #cauchy = equationsSet.TensorInterpolateGaussPoint(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, gaussPointNumber,
-    #                                         userElementNumber, valuesSizes)
-    #print(cauchy)
+    maskFile = open('./results/mask.exdata', 'w')
+    maskFile.write(' Group name: Mask\n')
+    maskFile.write(' #Fields=2\n')
+    maskFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
+    maskFile.write('   x.  Value index= 1, #Derivatives=0\n')
+    maskFile.write('   y.  Value index= 2, #Derivatives=0\n')
+    maskFile.write('   z.  Value index= 3, #Derivatives=0\n')
+    maskFile.write(' 2) MaskValue, field, rectangular cartesian, #Components=1\n')
+    maskFile.write('   1.  Value index= 4, #Derivatives=0\n')
+    mask, _ = load(path + subject + '/' + pressure + '/Lung/' + subject + '.Lung.mask.img')
+    nid = 0
+    for k in range(0, mask.shape[2], 10):
+        for j in range(0, mask.shape[1], 10):
+            for i in range(0, mask.shape[0], 10):
+                if mask[i,j,k] == 5:
+                    (x,y,z) = Pix2Coord(pixdim,i,j,k)
 
-    ssFile = open('./results/ss.exdata', 'w')
-    ssFile.write(' Group name: Strain-Stress\n')
-    ssFile.write(' #Fields=3\n')
-    ssFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
-    ssFile.write('   x.  Value index= 1, #Derivatives=0\n')
-    ssFile.write('   y.  Value index= 2, #Derivatives=0\n')
-    ssFile.write('   z.  Value index= 3, #Derivatives=0\n')
-    ssFile.write(' 2) Strain, field, rectangular cartesian, #Components=1\n')
-    ssFile.write('   1.  Value index= 4, #Derivatives=0\n')
-    ssFile.write(' 3) Stress, field, rectangular cartesian, #Components=1\n')
-    ssFile.write('   1.  Value index= 5, #Derivatives=0\n')
+                    nid += 1
+                    maskFile.write(' Node: %d\n' % nid)
+                    maskFile.write('  %E %E %E %E\n' % (x,y,z,mask[i,j,k]))
+    maskFile.close()
+
+    minX = float('inf')
+    minY = float('inf')
+    minZ = float('inf')
+    maxX = -float('inf')
+    maxY = -float('inf')
+    maxZ = -float('inf')
+    for nid in node_nums:
+        x = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 1)
+        y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 2)
+        z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 3)
+        minX = min(minX, x)
+        minY = min(minY, y)
+        minZ = min(minZ, z)
+        maxX = max(maxX, x)
+        maxY = max(maxY, y)
+        maxZ = max(maxZ, z)
+    print('x = (%f,%f)' % (minX, maxX))
+    print('y = (%f,%f)' % (minY, maxY))
+    print('z = (%f,%f)' % (minZ, maxZ))
 
     #
-    # Expected values for strain tensor are:
+    # Expected values for strain tensor in the cube example are:
     # 0.22 0 0
     # 0    0 0
     # 0    0 0
     #
-    # Expected values for stress tensor are:
+    # Expected values for stress tensor in the cube example are:
     # 24000     0     0
     #     0 18867     0
     #     0     0 18867
     #
 
-    valuesSizes = (3,3)
-    ssInterp = 2
-    for eid in [0]:
-        for xiZ in np.linspace(0.0, 1.0, ssInterp):
-            for xiY in np.linspace(0.0, 1.0, ssInterp):
-                for xiX in np.linspace(0.0, 1.0, ssInterp):
-                    coords = dependentField.ParameterSetInterpolateSingleXiDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-                                                                              1, eid+1, [xiX, xiY, xiZ], 3)
-                    strain = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN, eid,
-                                                              [xiX, xiY, xiZ], valuesSizes)
-                    stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
-                                                              [xiX, xiY, xiZ], valuesSizes)
+    valuesFile = open('./results/values.exdata', 'w')
+    valuesFile.write(' Group name: Values\n')
+    valuesFile.write(' #Fields=3\n')
+    valuesFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
+    valuesFile.write('   x.  Value index= 1, #Derivatives=0\n')
+    valuesFile.write('   y.  Value index= 2, #Derivatives=0\n')
+    valuesFile.write('   z.  Value index= 3, #Derivatives=0\n')
+    valuesFile.write(' 2) Strain, field, rectangular cartesian, #Components=1\n')
+    valuesFile.write('   1.  Value index= 4, #Derivatives=0\n')
+    valuesFile.write(' 3) Stress, field, rectangular cartesian, #Components=1\n')
+    valuesFile.write('   1.  Value index= 5, #Derivatives=0\n')
 
-                    print(coords)
-                    print(strain)
-                    print(stress)
-                    print()
+    elements = iron.MeshElements()
+    mesh.ElementsGet(1, elements)
 
-        #print(eid, cauchy)
+    valuesSizes = (3, 3)
+    valuesInterp = 2
+    nid = 0
+    evaluatedCoords = set()
+    print(element_nums)
+    for eid in element_nums:
+        for xiZ in np.linspace(0.0, 1.0, valuesInterp):
+            for xiY in np.linspace(0.0, 1.0, valuesInterp):
+                for xiX in np.linspace(0.0, 1.0, valuesInterp):
+                    coords = dependentField.ParameterSetInterpolateSingleXiDP(iron.FieldVariableTypes.U,
+                                                                              iron.FieldParameterSetTypes.VALUES,
+                                                                              1, eid + 1, [xiX, xiY, xiZ], 3)
+                    if tuple(coords) not in evaluatedCoords:
+                        evaluatedCoords.add(tuple(coords))
+                        strain = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN,
+                                                                  eid, [xiX, xiY, xiZ], valuesSizes)
+                        stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
+                                                                  [xiX, xiY, xiZ], valuesSizes)
 
-    #stressField.ParameterSetAddElementDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-    #                                     userElementNumber, 1, 9.0)
+                        #print('Coord:', [xiX, xiY, xiZ], coords)
+                        if np.isfinite(strain).all() and np.isfinite(stress).all():
+                            eigStrain = np.linalg.eigvals(strain)
+                            eigStress = np.linalg.eigvals(stress)
+
+                            avgStrain = np.mean(eigStrain)
+                            avgStress = np.mean(eigStress)
+
+                            nid += 1
+                            valuesFile.write(' Node: %d\n' % nid)
+                            valuesFile.write('  %E %E %E %E %E\n' % (coords[0], coords[1], coords[2], avgStrain, avgStress))
+
+                            #print('Strain:', strain, eigStrain, avgStrain)
+                            #print('Stress:', stress, eigStress, avgStress)
+                        else:
+                            print('Strain or stress had non-finite values at element ID %d and coords %E %E %E' % (eid, coords[0], coords[1], coords[2]))
+                        #print()
+
+    valuesFile.close()
 
     fields = iron.Fields()
     fields.CreateRegion(region)
@@ -441,7 +468,28 @@ def Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim,
 if not os.path.exists("./results"):
     os.makedirs("./results")
 
-fields = Run(exelemFile, exnodeFile, interpolation, displacement, displacementPixdim, c10, c01, k, density, gravity)
+print('Load dx...')
+dx, image_header = load(displacementFiles % ('x'))
+displacement = np.zeros((dx.shape[0], dx.shape[1], dx.shape[2], 3))
+displacement[:, :, :, 0] = dx
+print('Load dy...')
+displacement[:, :, :, 1], _ = load(displacementFiles % ('y'))
+print('Load dz...')
+displacement[:, :, :, 2], _ = load(displacementFiles % ('z'))
+pixdim = header.get_pixel_spacing(image_header)
+print('Image dimensions:', displacement.shape)
+print('Voxel dimensions:', pixdim)
+
+cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFile, exelemFile, coordinatesField, dimension=3,
+                                                          interpolation='hermite')
+cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
+
+(x,y,z) = Pix2Coord(pixdim,100,100,100)
+(i,j,k) = Coord2Pix(pixdim,x,y,z)
+if i != 100 or j != 100 or k != 100:
+    raise ValueError('Coord2Pix(Pix2Coord(100,100,100)) != (100,100,100)')
+
+fields = Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity)
 fields.NodesExport("./results/out", "FORTRAN")
 fields.ElementsExport("./results/out", "FORTRAN")
 fields.Finalise()
