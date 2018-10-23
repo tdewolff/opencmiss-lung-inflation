@@ -10,8 +10,8 @@ import mesh_tools
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00149'
-pressure = '10cmH2O'
-registration = '10_25'
+pressure = '5cmH2O'
+registration = '5_10'
 
 c10 = 5000.0  # in Pa
 c01 = 2000.0  # in Pa
@@ -33,17 +33,28 @@ displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
 #exnodeFile = './cube_hermite.exnode'
 #displacementFiles = './displacement/cube_d%s.nii'
 
-def Pix2Coord(pixdim, i, j, k):
-    x = i * pixdim[0]
-    y = 256 - (j * pixdim[1])
-    z = -k * pixdim[2]
-    return x, y, z
-
 def Coord2Pix(pixdim, x, y, z):
+    # mesh coordinates have:
+    #  x increasing from right to left
+    #  y increasing from ventral to dorsal
+    #  z increasing from caudal to cradal
+    # pixel coordinates have:
+    #  x increasing from right to left
+    #  y increasing from dorsal to ventral
+    #  z increasing from cradal to caudal
+    # where y has been shifted (by half its size in pixels?)
     i = x / pixdim[0]
     j = (256-y) / pixdim[1]
     k = -z / pixdim[2]
     return i, j, k
+
+def TransformDisplacement(dx, dy, dz):
+    # it appears that displacement data gives:
+    #  x increasing from left to right
+    #  y increasing from dorsal to ventral
+    #  z increasing from cradal to caudal
+    # but our coordinate system has all of these reversed
+    return -dx, -dy, -dz
 
 def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
     (x,y,z) = Coord2Pix(pixdim,X,Y,Z)
@@ -71,7 +82,8 @@ def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
     c11 = displacement[x0, y1, z1] * (1 - xd) + displacement[x1, y1, z1] * xd
     c0 = c00 * (1 - yd) + c10 * yd
     c1 = c01 * (1 - yd) + c11 * yd
-    return c0 * (1 - zd) + c1 * zd
+    (dx, dy, dz) = c0 * (1 - zd) + c1 * zd
+    return TransformDisplacement(dx, dy, dz)
 
 def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity):
     # Get the number of computational nodes and this computational node number
@@ -278,9 +290,9 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
     nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
     nonLinearSolver.NewtonLinearSolverGet(linearSolver)
-    nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
-    nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
-    nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
+    #nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
+    #nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
+    #nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
     linearSolver.linearType = iron.LinearSolverTypes.DIRECT
     # linearSolver.libraryType = iron.SolverLibraries.LAPACK
     problem.SolversCreateFinish()
@@ -299,8 +311,6 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     boundaryConditions = iron.BoundaryConditions()
     solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
 
-    #dim = displacement['x'].shape
-    #avgRadius = 0  # in voxels
     nodes = iron.MeshNodes()
     mesh.NodesGet(1, nodes)
     for nid in node_nums:
@@ -312,36 +322,14 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
             Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
                                                      nid, 3)
 
-            # if avgRadius > 0:
-            #     dx = 0
-            #     dy = 0
-            #     dz = 0
-            #     n = 0
-            #     for k in range(max(0, int(np.floor(K - avgRadius))), min(dim[2], int(np.ceil(K + avgRadius) + 1))):
-            #         for j in range(max(0, int(np.floor(J - avgRadius))), min(dim[1], int(np.ceil(J + avgRadius) + 1))):
-            #             for i in range(max(0, int(np.floor(I - avgRadius))), min(dim[0], int(np.ceil(I + avgRadius) + 1))):
-            #                 if (i - I) ** 2 + (j - J) ** 2 + (k - K) ** 2 <= avgRadius ** 2:
-            #                     dx += displacement['x'][i, j, k]
-            #                     dy += displacement['y'][i, j, k]
-            #                     dz += displacement['z'][i, j, k]
-            #                     n += 1
-            #
-            #     if n == 0:
-            #         print('No displacement field defined at: ', [X, Y, Z])
-            #         continue
-            #     dx /= n
-            #     dy /= n
-            #     dz /= n
-            # else:
-
             (dx, dy, dz) = TrilinearInterpolation(displacement, pixdim, X, Y, Z)
 
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-                                       iron.BoundaryConditionsTypes.FIXED, -dx)
+                                       iron.BoundaryConditionsTypes.FIXED, dx)
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-                                       iron.BoundaryConditionsTypes.FIXED, -dy)
+                                       iron.BoundaryConditionsTypes.FIXED, dy)
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-                                       iron.BoundaryConditionsTypes.FIXED, -dz)
+                                       iron.BoundaryConditionsTypes.FIXED, dz)
 
             print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X,Y,Z, dx,dy,dz))
 
@@ -352,49 +340,6 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     ##################################################################
     problem.Solve()
 
-    maskFile = open('./results/mask.exdata', 'w')
-    maskFile.write(' Group name: Mask\n')
-    maskFile.write(' #Fields=2\n')
-    maskFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
-    maskFile.write('   x.  Value index= 1, #Derivatives=0\n')
-    maskFile.write('   y.  Value index= 2, #Derivatives=0\n')
-    maskFile.write('   z.  Value index= 3, #Derivatives=0\n')
-    maskFile.write(' 2) MaskValue, field, rectangular cartesian, #Components=1\n')
-    maskFile.write('   1.  Value index= 4, #Derivatives=0\n')
-    mask, _ = load(path + subject + '/' + pressure + '/Lung/' + subject + '.Lung.mask.img')
-    nid = 0
-    for k in range(0, mask.shape[2], 10):
-        for j in range(0, mask.shape[1], 10):
-            for i in range(0, mask.shape[0], 10):
-                if mask[i,j,k] == 5:
-                    (x,y,z) = Pix2Coord(pixdim,i,j,k)
-
-                    nid += 1
-                    maskFile.write(' Node: %d\n' % nid)
-                    maskFile.write('  %E %E %E %E\n' % (x,y,z,mask[i,j,k]))
-    maskFile.close()
-
-    minX = float('inf')
-    minY = float('inf')
-    minZ = float('inf')
-    maxX = -float('inf')
-    maxY = -float('inf')
-    maxZ = -float('inf')
-    for nid in node_nums:
-        x = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 1)
-        y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 2)
-        z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1, nid, 3)
-        minX = min(minX, x)
-        minY = min(minY, y)
-        minZ = min(minZ, z)
-        maxX = max(maxX, x)
-        maxY = max(maxY, y)
-        maxZ = max(maxZ, z)
-    print('x = (%f,%f)' % (minX, maxX))
-    print('y = (%f,%f)' % (minY, maxY))
-    print('z = (%f,%f)' % (minZ, maxZ))
-
-    #
     # Expected values for strain tensor in the cube example are:
     # 0.22 0 0
     # 0    0 0
@@ -409,7 +354,7 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     valuesFile = open('./results/values.exdata', 'w')
     valuesFile.write(' Group name: Values\n')
     valuesFile.write(' #Fields=3\n')
-    valuesFile.write(' 1) coordinates, coordinate, rectangular cartesian, #Components=3\n')
+    valuesFile.write(' 1) Geometry, coordinate, rectangular cartesian, #Components=3\n')
     valuesFile.write('   x.  Value index= 1, #Derivatives=0\n')
     valuesFile.write('   y.  Value index= 2, #Derivatives=0\n')
     valuesFile.write('   z.  Value index= 3, #Derivatives=0\n')
@@ -482,12 +427,15 @@ print('Voxel dimensions:', pixdim)
 
 cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFile, exelemFile, coordinatesField, dimension=3,
                                                           interpolation='hermite')
+# flip the lung mesh so that it is in the positive octant (+x, +y, +z), with:
+#  x increasing from right to left
+#  y increasing from dorsal to ventral
+#  z increasing from cradal to caudal
+#for node in cubic_hermite_morphic_mesh.nodes:
+#    node.values[1] = -node.values[1]
+#    node.values[2] = -node.values[2]
+#    node.values[1,0] += 256.0
 cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
-
-(x,y,z) = Pix2Coord(pixdim,100,100,100)
-(i,j,k) = Coord2Pix(pixdim,x,y,z)
-if i != 100 or j != 100 or k != 100:
-    raise ValueError('Coord2Pix(Pix2Coord(100,100,100)) != (100,100,100)')
 
 fields = Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity)
 fields.NodesExport("./results/out", "FORTRAN")
