@@ -9,7 +9,7 @@ from morphic.utils import convert_hermite_lagrange
 import mesh_tools
 import field_fitting
 
-solveExampleCube = True
+solveExampleCube = False
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00157'
@@ -21,6 +21,8 @@ c01 = 2000.0  # in Pa
 k = 6000.0  # in Pa
 density = 1000.0  # in kg m^-3
 gravity = [0.0, 0.0, 0.0]  # in m s^-2
+
+timeSteps = 1
 
 interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
@@ -117,7 +119,8 @@ def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
     return TransformDisplacement(dx, dy, dz)
 
 
-def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density, gravity):
+def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density, gravity,
+        timeSteps, outputFilename):
     # Get the number of computational nodes and this computational node number
     numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
 
@@ -298,78 +301,6 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
     # Define the problem
     ##################################################################
 
-    problem = iron.Problem()
-    problemSpecification = [iron.ProblemClasses.ELASTICITY,
-                            iron.ProblemTypes.FINITE_ELASTICITY,
-                            iron.ProblemSubtypes.NONE]
-    problem.CreateStart(problemUserNumber, problemSpecification)
-    problem.CreateFinish()
-
-    # Create control loops
-    problem.ControlLoopCreateStart()
-    problem.ControlLoopCreateFinish()
-
-    # Create problem solver
-    linearSolver = iron.Solver()
-    nonLinearSolver = iron.Solver()
-    problem.SolversCreateStart()
-    problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, nonLinearSolver)
-    nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
-    nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
-    nonLinearSolver.NewtonLinearSolverGet(linearSolver)
-    # nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
-    # nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
-    # nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
-    linearSolver.linearType = iron.LinearSolverTypes.DIRECT
-    # linearSolver.libraryType = iron.SolverLibraries.LAPACK
-    problem.SolversCreateFinish()
-
-    # Create solver equations and add equations set to solver equations
-    solver = iron.Solver()
-    solverEquations = iron.SolverEquations()
-    problem.SolverEquationsCreateStart()
-    problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, solver)
-    solver.SolverEquationsGet(solverEquations)
-    solverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
-    solverEquations.EquationsSetAdd(equationsSet)
-    problem.SolverEquationsCreateFinish()
-
-    # Prescribe boundary conditions (absolute nodal parameters)
-    boundaryConditions = iron.BoundaryConditions()
-    solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
-
-    nodes = iron.MeshNodes()
-    mesh.NodesGet(1, nodes)
-    for nid in node_nums:
-        if nodes.NodeOnBoundaryGet(nid) == iron.MeshBoundaryTypes.ON:
-            X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
-                                                     1,
-                                                     nid, 1)
-            Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
-                                                     1,
-                                                     nid, 2)
-            Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
-                                                     1,
-                                                     nid, 3)
-
-            (dx, dy, dz) = TrilinearInterpolation(displacement, pixdim, X, Y, Z)
-
-            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
-                                       iron.BoundaryConditionsTypes.FIXED, dx)
-            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
-                                       iron.BoundaryConditionsTypes.FIXED, dy)
-            boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
-                                       iron.BoundaryConditionsTypes.FIXED, dz)
-
-            print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X, Y, Z, dx, dy, dz))
-
-    solverEquations.BoundaryConditionsCreateFinish()
-
-    ##################################################################
-    # Solve!
-    ##################################################################
-    problem.Solve()
-
     field_fitting.FitField("CauchyStress", field_fitting.FittingVariableTypes.CAUCHY_STRESS, basis, region,
                            mesh, decomposition, geometricField, equationsSet)
     field_fitting.FitField("GreenLagrangeStrain", field_fitting.FittingVariableTypes.GREEN_LAGRANGE_STRAIN, basis,
@@ -380,6 +311,107 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
                            region, mesh, decomposition, geometricField, equationsSet)
     field_fitting.FitField("Jacobian", field_fitting.FittingVariableTypes.JACOBIAN, basis,
                            region, mesh, decomposition, geometricField, equationsSet)
+
+    fields = iron.Fields()
+    fields.CreateRegion(region)
+    fields.NodesExport(outputFilename + "_0", "FORTRAN")
+    fields.ElementsExport(outputFilename, "FORTRAN")
+    fields.Finalise()
+
+    for timeStep in range(1, timeSteps+1):
+        loadRatio = timeStep / timeSteps
+
+        problem = iron.Problem()
+        problemSpecification = [iron.ProblemClasses.ELASTICITY,
+                                iron.ProblemTypes.FINITE_ELASTICITY,
+                                iron.ProblemSubtypes.NONE]
+        problem.CreateStart(problemUserNumber, problemSpecification)
+        problem.CreateFinish()
+
+        # Create control loops
+        problem.ControlLoopCreateStart()
+        problem.ControlLoopCreateFinish()
+
+        # Create problem solver
+        linearSolver = iron.Solver()
+        nonLinearSolver = iron.Solver()
+        problem.SolversCreateStart()
+        problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, nonLinearSolver)
+        nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
+        nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
+        nonLinearSolver.NewtonLinearSolverGet(linearSolver)
+        nonLinearSolver.NewtonAbsoluteToleranceSet(1e-9)
+        nonLinearSolver.NewtonSolutionToleranceSet(1e-9)
+        nonLinearSolver.NewtonRelativeToleranceSet(1e-9)
+        linearSolver.linearType = iron.LinearSolverTypes.DIRECT
+        # linearSolver.libraryType = iron.SolverLibraries.LAPACK
+        problem.SolversCreateFinish()
+
+        # Create solver equations and add equations set to solver equations
+        solver = iron.Solver()
+        solverEquations = iron.SolverEquations()
+        problem.SolverEquationsCreateStart()
+        problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, solver)
+        solver.SolverEquationsGet(solverEquations)
+        solverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
+        solverEquations.EquationsSetAdd(equationsSet)
+        problem.SolverEquationsCreateFinish()
+
+        # Prescribe boundary conditions (absolute nodal parameters)
+        boundaryConditions = iron.BoundaryConditions()
+        solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
+
+        nodes = iron.MeshNodes()
+        mesh.NodesGet(1, nodes)
+        for nid in node_nums:
+            if nodes.NodeOnBoundaryGet(nid) == iron.MeshBoundaryTypes.ON:
+                X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                         1,
+                                                         nid, 1)
+                Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                         1,
+                                                         nid, 2)
+                Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                         1,
+                                                         nid, 3)
+
+                (dx, dy, dz) = TrilinearInterpolation(displacement, pixdim, X, Y, Z)
+
+                boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
+                                           iron.BoundaryConditionsTypes.FIXED, dx * loadRatio)
+                boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 2,
+                                           iron.BoundaryConditionsTypes.FIXED, dy * loadRatio)
+                boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
+                                           iron.BoundaryConditionsTypes.FIXED, dz * loadRatio)
+
+                print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X, Y, Z, dx, dy, dz))
+
+        solverEquations.BoundaryConditionsCreateFinish()
+
+        ##################################################################
+        # Solve!
+        ##################################################################
+        problem.Solve()
+
+        field_fitting.FitField("CauchyStress", field_fitting.FittingVariableTypes.CAUCHY_STRESS, basis, region,
+                               mesh, decomposition, geometricField, equationsSet)
+        field_fitting.FitField("GreenLagrangeStrain", field_fitting.FittingVariableTypes.GREEN_LAGRANGE_STRAIN, basis,
+                               region, mesh, decomposition, geometricField, equationsSet)
+        field_fitting.FitField("AverageCauchyStress", field_fitting.FittingVariableTypes.AVERAGE_STRESS, basis,
+                               region, mesh, decomposition, geometricField, equationsSet)
+        field_fitting.FitField("AverageGreenLagrangeStrain", field_fitting.FittingVariableTypes.AVERAGE_STRAIN, basis,
+                               region, mesh, decomposition, geometricField, equationsSet)
+        field_fitting.FitField("Jacobian", field_fitting.FittingVariableTypes.JACOBIAN, basis,
+                               region, mesh, decomposition, geometricField, equationsSet)
+
+        fields = iron.Fields()
+        fields.CreateRegion(region)
+        fields.NodesExport(outputFilename + "_%d" % timeStep, "FORTRAN")
+        #fields.ElementsExport(outputFilename + "_%d" % timeStep, "FORTRAN")
+        fields.Finalise()
+
+        solverEquations.Finalise()
+        problem.Finalise()
 
     # Expected values for strain tensor in the cube example are:
     # 0.22 0 0
@@ -448,16 +480,9 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
     #
     # valuesFile.close()
 
-    fields = iron.Fields()
-    fields.CreateRegion(region)
-    return fields
-
 if not os.path.exists("./results"):
     os.makedirs("./results")
 
-fields = Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density,
-             gravity)
-fields.NodesExport("./results/out", "FORTRAN")
-fields.ElementsExport("./results/out", "FORTRAN")
-fields.Finalise()
+Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density,
+             gravity, timeSteps, "./results/out")
 

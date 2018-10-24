@@ -109,6 +109,12 @@ def FitField(name, variable, basis, region, mesh, decomposition, geometricField,
                     value = np.prod(eigs)
                 else:
                     value = np.mean(eigs)
+
+                if isinstance(value, complex):
+                    if abs(value.imag) > 1e-9:
+                        print('WARNING: tensor interpolation in element %d gives complex number' % eid)
+                    value = value.real
+
                 fittingField.ParameterSetUpdateGaussPointDP(iron.FieldVariableTypes.U,
                                                             iron.FieldParameterSetTypes.VALUES, gid, eid, 1, value)
 
