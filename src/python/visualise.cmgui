@@ -26,8 +26,9 @@ gfx modify g_element "/" point glyph axes general size "50*50*100" centre 0,0,0 
 
 gfx modify g_element /Out lines coordinate Deformed select_on material gray50 selected_material default_selected
 gfx modify g_element /Out surfaces coordinate Deformed select_on material default selected_material default_selected data StressXX spectrum StressSpectrum
-gfx modify g_element /Start lines coordinate coordinates select_on material red selected_material default_selected
-gfx modify g_element /Final lines coordinate coordinates select_on material green selected_material default_selected
+gfx modify g_element /Out node_points coordinate Deformed glyph sphere size "0.01*0.01*0.01" select_on material gray50 selected_material default_selected
+#gfx modify g_element /Start lines coordinate coordinates select_on material red selected_material default_selected
+#gfx modify g_element /Final lines coordinate coordinates select_on material green selected_material default_selected
 
 
 #gfx modify g_element "Values" data coordinate Geometry glyph diamond size "5*5*5" data Stress

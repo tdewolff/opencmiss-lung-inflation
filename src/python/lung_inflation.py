@@ -254,6 +254,7 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
     dependentField = iron.Field()
     equationsSet.DependentCreateStart(dependentFieldUserNumber, dependentField)
     dependentField.VariableLabelSet(iron.FieldVariableTypes.U, "Dependent")
+    dependentField.VariableLabelSet(iron.FieldVariableTypes.DELUDELN, "Dependent_delU_delN")
     equationsSet.DependentCreateFinish()
 
     print("Dependent field number of components (U,DELUDELN):",
@@ -369,10 +370,16 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
     ##################################################################
     problem.Solve()
 
-    field_fitting.FitField("CauchyStress", iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, region,
-                           decomposition, geometricField, equationsSet)
-    field_fitting.FitField("GreenLagrangeStrain", iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN, region,
-                           decomposition, geometricField, equationsSet)
+    field_fitting.FitField("CauchyStress", field_fitting.FittingVariableTypes.CAUCHY_STRESS, basis, region,
+                           mesh, decomposition, geometricField, equationsSet)
+    field_fitting.FitField("GreenLagrangeStrain", field_fitting.FittingVariableTypes.GREEN_LAGRANGE_STRAIN, basis,
+                           region, mesh, decomposition, geometricField, equationsSet)
+    field_fitting.FitField("AverageCauchyStress", field_fitting.FittingVariableTypes.AVERAGE_STRESS, basis,
+                           region, mesh, decomposition, geometricField, equationsSet)
+    field_fitting.FitField("AverageGreenLagrangeStrain", field_fitting.FittingVariableTypes.AVERAGE_STRAIN, basis,
+                           region, mesh, decomposition, geometricField, equationsSet)
+    field_fitting.FitField("Jacobian", field_fitting.FittingVariableTypes.JACOBIAN, basis,
+                           region, mesh, decomposition, geometricField, equationsSet)
 
     # Expected values for strain tensor in the cube example are:
     # 0.22 0 0
@@ -385,69 +392,65 @@ def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, p
     #     0     0 18867
     #
 
-    valuesFile = open('./results/values.exdata', 'w')
-    valuesFile.write(' Group name: Values\n')
-    valuesFile.write(' #Fields=3\n')
-    valuesFile.write(' 1) Geometry, coordinate, rectangular cartesian, #Components=3\n')
-    valuesFile.write('   x.  Value index= 1, #Derivatives=0\n')
-    valuesFile.write('   y.  Value index= 2, #Derivatives=0\n')
-    valuesFile.write('   z.  Value index= 3, #Derivatives=0\n')
-    valuesFile.write(' 2) Strain, field, rectangular cartesian, #Components=1\n')
-    valuesFile.write('   1.  Value index= 4, #Derivatives=0\n')
-    valuesFile.write(' 3) Stress, field, rectangular cartesian, #Components=1\n')
-    valuesFile.write('   1.  Value index= 5, #Derivatives=0\n')
-
-    elements = iron.MeshElements()
-    mesh.ElementsGet(1, elements)
-
-    valuesSizes = (3, 3)
-    valuesInterp = 2
-    nid = 0
-    evaluatedCoords = set()
-    print(element_nums)
-    for eid in element_nums:
-        for xiZ in np.linspace(0.0, 1.0, valuesInterp):
-            for xiY in np.linspace(0.0, 1.0, valuesInterp):
-                for xiX in np.linspace(0.0, 1.0, valuesInterp):
-                    coords = dependentField.ParameterSetInterpolateSingleXiDP(iron.FieldVariableTypes.U,
-                                                                              iron.FieldParameterSetTypes.VALUES,
-                                                                              1, eid + 1, [xiX, xiY, xiZ], 3)
-                    if tuple(coords) not in evaluatedCoords:
-                        evaluatedCoords.add(tuple(coords))
-                        strain = equationsSet.TensorInterpolateXi(
-                            iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN,
-                            eid, [xiX, xiY, xiZ], valuesSizes)
-                        stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS,
-                                                                  eid,
-                                                                  [xiX, xiY, xiZ], valuesSizes)
-
-                        print('Coord:', [xiX, xiY, xiZ], coords)
-                        print(stress)
-                        if np.isfinite(strain).all() and np.isfinite(stress).all():
-                            eigStrain = np.linalg.eigvals(strain)
-                            eigStress = np.linalg.eigvals(stress)
-
-                            avgStrain = np.mean(eigStrain)
-                            avgStress = np.mean(eigStress)
-
-                            nid += 1
-                            valuesFile.write(' Node: %d\n' % nid)
-                            valuesFile.write(
-                                '  %E %E %E %E %E\n' % (coords[0], coords[1], coords[2], avgStrain, avgStress))
-
-                            # print('Strain:', strain, eigStrain, avgStrain)
-                            # print('Stress:', stress, eigStress, avgStress)
-                        else:
-                            print('Strain or stress had non-finite values at element ID %d and coords %E %E %E' % (
-                                eid, coords[0], coords[1], coords[2]))
-                        # print()
-
-    valuesFile.close()
+    # valuesFile = open('./results/values.exdata', 'w')
+    # valuesFile.write(' Group name: Values\n')
+    # valuesFile.write(' #Fields=3\n')
+    # valuesFile.write(' 1) Geometry, coordinate, rectangular cartesian, #Components=3\n')
+    # valuesFile.write('   x.  Value index= 1, #Derivatives=0\n')
+    # valuesFile.write('   y.  Value index= 2, #Derivatives=0\n')
+    # valuesFile.write('   z.  Value index= 3, #Derivatives=0\n')
+    # valuesFile.write(' 2) Strain, field, rectangular cartesian, #Components=1\n')
+    # valuesFile.write('   1.  Value index= 4, #Derivatives=0\n')
+    # valuesFile.write(' 3) Stress, field, rectangular cartesian, #Components=1\n')
+    # valuesFile.write('   1.  Value index= 5, #Derivatives=0\n')
+    #
+    # valuesSizes = (3, 3)
+    # valuesInterp = 2
+    # nid = 0
+    # evaluatedCoords = set()
+    # print(element_nums)
+    # for eid in element_nums:
+    #     for xiZ in np.linspace(0.0, 1.0, valuesInterp):
+    #         for xiY in np.linspace(0.0, 1.0, valuesInterp):
+    #             for xiX in np.linspace(0.0, 1.0, valuesInterp):
+    #                 coords = dependentField.ParameterSetInterpolateSingleXiDP(iron.FieldVariableTypes.U,
+    #                                                                           iron.FieldParameterSetTypes.VALUES,
+    #                                                                           1, eid + 1, [xiX, xiY, xiZ], 3)
+    #                 if tuple(coords) not in evaluatedCoords:
+    #                     evaluatedCoords.add(tuple(coords))
+    #                     strain = equationsSet.TensorInterpolateXi(
+    #                         iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN,
+    #                         eid, [xiX, xiY, xiZ], valuesSizes)
+    #                     stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS,
+    #                                                               eid,
+    #                                                               [xiX, xiY, xiZ], valuesSizes)
+    #
+    #                     print('Coord:', [xiX, xiY, xiZ], coords)
+    #                     print(stress)
+    #                     if np.isfinite(strain).all() and np.isfinite(stress).all():
+    #                         eigStrain = np.linalg.eigvals(strain)
+    #                         eigStress = np.linalg.eigvals(stress)
+    #
+    #                         avgStrain = np.mean(eigStrain)
+    #                         avgStress = np.mean(eigStress)
+    #
+    #                         nid += 1
+    #                         valuesFile.write(' Node: %d\n' % nid)
+    #                         valuesFile.write(
+    #                             '  %E %E %E %E %E\n' % (coords[0], coords[1], coords[2], avgStrain, avgStress))
+    #
+    #                         # print('Strain:', strain, eigStrain, avgStrain)
+    #                         # print('Stress:', stress, eigStress, avgStress)
+    #                     else:
+    #                         print('Strain or stress had non-finite values at element ID %d and coords %E %E %E' % (
+    #                             eid, coords[0], coords[1], coords[2]))
+    #                     # print()
+    #
+    # valuesFile.close()
 
     fields = iron.Fields()
     fields.CreateRegion(region)
     return fields
-
 
 if not os.path.exists("./results"):
     os.makedirs("./results")
@@ -457,3 +460,4 @@ fields = Run(exnodeFile, exelemFile, coordinatesField, interpolation, displaceme
 fields.NodesExport("./results/out", "FORTRAN")
 fields.ElementsExport("./results/out", "FORTRAN")
 fields.Finalise()
+
