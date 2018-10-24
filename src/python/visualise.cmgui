@@ -1,28 +1,23 @@
 gfx read node "./results/out.part0.exnode" reg Out;
 gfx read elem "./results/out.part0.exelem" reg Out;
 gfx read data "./results/values.exdata" reg Values;
-gfx read node "./results/displacement.exnode" reg Displacement;
-gfx read elem "./results/displacement.exelem" reg Displacement;
-gfx read node "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/10cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Start;
-gfx read elem "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/10cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Start;
-gfx read node "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/25cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
-gfx read elem "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00149/25cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
+gfx read node "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00157/9.4cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Start;
+gfx read elem "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00157/9.4cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Start;
+gfx read node "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00157/15cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
+gfx read elem "/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/AP00157/15cmH2O/Lung/FEMesh/Left_RefittedNoVersion" reg Final;
 
 gfx define field "Out/Deformed" component Dependent.1 Dependent.2 Dependent.3
 gfx define faces egroup "/Out"
 gfx define faces egroup "/Start"
 gfx define faces egroup "/Final"
-gfx define faces egroup "/Displacement"
 
 gfx create window 1
 gfx modify g_element "/" point glyph axes general size "50*50*100" centre 0,0,0 font default select_on material default selected_material default_selected;
 
 gfx modify g_element /Out lines coordinate Deformed select_on material gray50 selected_material default_selected
 gfx modify g_element /Out surfaces coordinate Deformed select_on material gray50 selected_material default_selected
-
 gfx modify g_element /Start lines coordinate coordinates select_on material red selected_material default_selected
 gfx modify g_element /Final lines coordinate coordinates select_on material green selected_material default_selected
-gfx modify g_element /Displacement lines coordinate Geometry select_on material white selected_material default_selected
 
 
 gfx modify g_element "Values" data coordinate Geometry glyph diamond size "5*5*5" data Stress

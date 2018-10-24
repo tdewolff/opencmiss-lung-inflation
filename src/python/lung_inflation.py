@@ -9,9 +9,9 @@ from morphic.utils import convert_hermite_lagrange
 import mesh_tools
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
-subject = 'AP00149'
-pressure = '5cmH2O'
-registration = '5_10'
+subject = 'AP00157'
+refPressure = '9.4'
+registration = '9_15'
 
 c10 = 5000.0  # in Pa
 c01 = 2000.0  # in Pa
@@ -23,8 +23,8 @@ interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
 ##################################################################
 
-exelemFile = path + subject + '/' + pressure + '/Lung/FEMesh/Left_RefittedNoVersion.exelem'
-exnodeFile = path + subject + '/' + pressure + '/Lung/FEMesh/Left_RefittedNoVersion.exnode'
+exelemFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exelem'
+exnodeFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exnode'
 coordinatesField = 'coordinates'
 displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
 #displacementFiles = './displacement/AP00149_d%s.nii'
@@ -34,11 +34,11 @@ displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
 #displacementFiles = './displacement/cube_d%s.nii'
 
 def Coord2Pix(pixdim, x, y, z):
-    # mesh coordinates have:
+    # mesh coordinates (in mm) have:
     #  x increasing from right to left
     #  y increasing from ventral to dorsal
     #  z increasing from caudal to cradal
-    # pixel coordinates have:
+    # pixel coordinates (in px) have:
     #  x increasing from right to left
     #  y increasing from dorsal to ventral
     #  z increasing from cradal to caudal
@@ -49,11 +49,11 @@ def Coord2Pix(pixdim, x, y, z):
     return i, j, k
 
 def TransformDisplacement(dx, dy, dz):
-    # it appears that displacement data gives:
+    # it appears that displacement data wth RAI orientation gives:
     #  x increasing from left to right
     #  y increasing from dorsal to ventral
     #  z increasing from cradal to caudal
-    # but our coordinate system has all of these reversed
+    # but our mesh coordinate system has all of these reversed
     return -dx, -dy, -dz
 
 def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
@@ -283,8 +283,8 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     problem.ControlLoopCreateFinish()
 
     # Create problem solver
-    nonLinearSolver = iron.Solver()
     linearSolver = iron.Solver()
+    nonLinearSolver = iron.Solver()
     problem.SolversCreateStart()
     problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, nonLinearSolver)
     nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
@@ -412,6 +412,9 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
 
 if not os.path.exists("./results"):
     os.makedirs("./results")
+
+print('Subject:', subject)
+print('Registration:', registration)
 
 print('Load dx...')
 dx, image_header = load(displacementFiles % ('x'))
