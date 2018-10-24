@@ -1,159 +1,177 @@
 from opencmiss.iron import iron
 
+fittingUserNumber = 100
 
-def FitField(region, decomposition, fibreField, variable, tau, kappa):
-    fittedFieldUserNumber = 100
-    dependentFieldUserNumber = 101
-    equationsSetFieldUserNumber = 102
-    equationsSetUserNumber = 103
-    materialsFieldUserNumber = 104
-    problemUserNumber = 105
+def FitField(name, variable, region, decomposition, geometricField, equationsSet, tau=0.01, kappa=0.0005):
+    global fittingUserNumber
 
-    fittedField = iron.Field()
-    fittedField.CreateStart(fittedFieldUserNumber, region)
-    fittedField.TypeSet(iron.FieldTypes.GENERAL)
-    fittedField.MeshDecompositionSet(decomposition)
-    fittedField.GeometricFieldSet(fibreField)  # geometricField? Or leave out?
-    fittedField.DependentTypeSet(iron.FieldDependentTypes.DEPENDENT)
-    fittedField.NumberOfVariablesSet(2)
-    fittedField.VariableTypesSet([iron.FieldVariableTypes.U, iron.FieldVariableTypes.V])
-    fittedField.VariableLabelSet(iron.FieldVariableTypes.U, "GaussStress")
-    fittedField.VariableLabelSet(iron.FieldVariableTypes.V, "GaussWeight")
-    fittedField.NumberOfComponentsSet(iron.FieldVariableTypes.U, 6)
-    fittedField.NumberOfComponentsSet(iron.FieldVariableTypes.V, 6)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 2, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 3, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 4, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 5, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 6, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 1, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 2, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 3, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 4, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 5, 1)
-    fittedField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 6, 1)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 4,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 5,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 6,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 1,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 2,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 3,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 4,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 5,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 6,
-                                          iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
-    fittedField.CreateFinish()
+    fittingFieldUserNumber = fittingUserNumber + 0
+    fittingEquationsSetUserNumber = fittingUserNumber + 1
+    fittingEquationsSetFieldUserNumber = fittingUserNumber + 2
+    fittingDependentFieldUserNumber = fittingUserNumber + 3
+    fittingMaterialsFieldUserNumber = fittingUserNumber + 4
+    fittingProblemUserNumber = fittingUserNumber + 5
+    fittingUserNumber += 10
+
+    fittingField = iron.Field()
+    fittingField.CreateStart(fittingFieldUserNumber, region)
+    fittingField.TypeSet(iron.FieldTypes.GENERAL)
+    fittingField.MeshDecompositionSet(decomposition)
+    fittingField.GeometricFieldSet(geometricField)
+    fittingField.DependentTypeSet(iron.FieldDependentTypes.DEPENDENT)
+    fittingField.NumberOfVariablesSet(2)
+    fittingField.VariableTypesSet([iron.FieldVariableTypes.U, iron.FieldVariableTypes.V])
+    fittingField.VariableLabelSet(iron.FieldVariableTypes.U, name + "_GaussStress")
+    #fittingField.VariableLabelSet(iron.FieldVariableTypes.V, name + "_GaussWeight")
+    fittingField.NumberOfComponentsSet(iron.FieldVariableTypes.U, 6)
+    fittingField.NumberOfComponentsSet(iron.FieldVariableTypes.V, 6)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 2, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 3, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 4, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 5, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 6, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 1, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 2, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 3, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 4, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 5, 1)
+    fittingField.ComponentMeshComponentSet(iron.FieldVariableTypes.V, 6, 1)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 4,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 5,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 6,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 1,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 2,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 3,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 4,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 5,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.ComponentInterpolationSet(iron.FieldVariableTypes.V, 6,
+                                           iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
+    fittingField.CreateFinish()
+
+    equationsSet.DerivedCreateStart(fittingFieldUserNumber, fittingField)
+    equationsSet.DerivedVariableSet(variable,  # WHAT DOES THIS DO?
+                                    iron.FieldVariableTypes.U)
+    equationsSet.DerivedCreateFinish()
+
+    # Create the fitting equations_set
+    fittingEquationsSetField = iron.Field()
+    fittingEquationsSet = iron.EquationsSet()
+    fittingEquationsSetSpecification = [iron.EquationsSetClasses.FITTING,
+                                        iron.EquationsSetTypes.GAUSS_FITTING_EQUATION,
+                                        iron.EquationsSetSubtypes.GAUSS_POINT_FITTING,
+                                        iron.EquationsSetFittingSmoothingTypes.SOBOLEV_VALUE]
+    fittingEquationsSet.CreateStart(fittingEquationsSetUserNumber, region, geometricField,
+                                    fittingEquationsSetSpecification,
+                                    fittingEquationsSetFieldUserNumber, fittingEquationsSetField)
+    fittingEquationsSet.CreateFinish()
+
+    # Create the fitting dependent field
+    fittingDependentField = iron.Field()
+    fittingEquationsSet.DependentCreateStart(fittingDependentFieldUserNumber, fittingDependentField)
+    fittingDependentField.VariableLabelSet(iron.FieldVariableTypes.U, name)
+    # Set the number of components to 2
+    fittingDependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U, 6)
+    fittingDependentField.NumberOfComponentsSet(iron.FieldVariableTypes.DELUDELN, 6)
+    # Set the field variables to be triquadratic Lagrange
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 2, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 3, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 4, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 5, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 6, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 1, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 2, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 3, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 4, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 5, 1)
+    fittingDependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 6, 1)
+    fittingEquationsSet.DependentCreateFinish()
+
+    # Create the fitting independent field
+    fittingEquationsSet.IndependentCreateStart(fittingFieldUserNumber, fittingField)
+    fittingEquationsSet.IndependentCreateFinish()
 
     # Initialise Gauss point weight field to 1.0
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 1, 1.0)
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 2, 1.0)
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 3, 1.0)
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 4, 1.0)
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 5, 1.0)
-    fittedField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
-                                            iron.FieldParameterSetTypes.VALUES, 6, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 1, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 2, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 3, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 4, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 5, 1.0)
+    fittingField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.V,
+                                             iron.FieldParameterSetTypes.VALUES, 6, 1.0)
 
-    equationsSetField = iron.Field()
-    equationsSet = iron.EquationsSet()
-    equationsSetSpecification = [iron.EquationsSetClasses.FITTING,
-                                 iron.EquationsSetTypes.GAUSS_FITTING_EQUATION,
-                                 iron.EquationsSetSubtypes.GAUSS_POINT_FITTING,
-                                 iron.EquationsSetFittingSmoothingTypes.SOBOLEV_VALUE]
-    equationsSet.CreateStart(equationsSetUserNumber, region, fibreField, equationsSetSpecification,
-                             equationsSetFieldUserNumber, equationsSetField)
-    equationsSet.CreateFinish()
+    # Create material field (Sobolev parameters)
+    fittingMaterialField = iron.Field()
+    fittingEquationsSet.MaterialsCreateStart(fittingMaterialsFieldUserNumber, fittingMaterialField)
+    fittingMaterialField.VariableLabelSet(iron.FieldVariableTypes.U, "SmoothingParameters")
+    fittingEquationsSet.MaterialsCreateFinish()
+    fittingMaterialField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+                                                     1, tau)
+    fittingMaterialField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
+                                                     2, kappa)
 
-    # self.equationsSet.DerivedCreateStart(fittedFieldUserNumber, fittedField)
-    # self.equationsSet.DerivedVariableSet(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS,
-    #                                     iron.FieldVariableTypes.U)
-    # self.equationsSet.DerivedCreateFinish()
+    # Create the fitting equations
+    fittingEquations = iron.Equations()
+    fittingEquationsSet.EquationsCreateStart(fittingEquations)
+    fittingEquations.sparsityType = iron.EquationsSparsityTypes.SPARSE
+    fittingEquations.outputType = iron.EquationsOutputTypes.NONE
+    fittingEquationsSet.EquationsCreateFinish()
 
-    dependentField = iron.Field()
-    equationsSet.DependentCreateStart(dependentFieldUserNumber, dependentField)
-    dependentField.VariableLabelSet(iron.FieldVariableTypes.U, "FittedStress")
-    # Set the number of components to 2
-    dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U, 6)
-    dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.DELUDELN, 6)
-    # Set the field variables to be triquadratic Lagrange
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 1, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 2, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 3, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 4, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 5, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U, 6, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 1, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 2, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 3, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 4, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 5, 1)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN, 6, 1)
-    equationsSet.DependentCreateFinish()
+    # Create fitting problem
+    fittingProblem = iron.Problem()
+    fittingProblemSpecification = [iron.ProblemClasses.FITTING,
+                                   iron.ProblemTypes.DATA_FITTING,
+                                   iron.ProblemSubtypes.STATIC_FITTING]
+    fittingProblem.CreateStart(fittingProblemUserNumber, fittingProblemSpecification)
+    fittingProblem.CreateFinish()
 
-    equationsSet.IndependentCreateStart(fittedFieldUserNumber, fittedField)
-    equationsSet.IndependentCreateFinish()
+    # Create control loops
+    fittingProblem.ControlLoopCreateStart()
+    fittingProblem.ControlLoopCreateFinish()
 
-    materialField = iron.Field()
-    equationsSet.MaterialsCreateStart(materialsFieldUserNumber, materialField)
-    materialField.VariableLabelSet(iron.FieldVariableTypes.U, "SmoothingParameters")
-    equationsSet.MaterialsCreateFinish()
-    materialField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-                                              1, tau)
-    materialField.ComponentValuesInitialiseDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES,
-                                              2, kappa)
+    # Create problem solver
+    fittingSolver = iron.Solver()
+    fittingProblem.SolversCreateStart()
+    fittingProblem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, fittingSolver)
+    fittingSolver.outputType = iron.SolverOutputTypes.MONITOR
+    fittingProblem.SolversCreateFinish()
 
-    equations = iron.Equations()
-    equationsSet.EquationsCreateStart(equations)
-    equations.sparsityType = iron.EquationsSparsityTypes.SPARSE
-    equations.outputType = iron.EquationsOutputTypes.NONE
-    equationsSet.EquationsCreateFinish()
+    # Create fitting solver equations and add fitting equations set to solver equations
+    fittingSolverEquations = iron.SolverEquations()
+    fittingProblem.SolverEquationsCreateStart()
+    # Get the solver equations
+    fittingSolver.SolverEquationsGet(fittingSolverEquations)
+    fittingSolverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
+    fittingSolverEquations.EquationsSetAdd(fittingEquationsSet)
+    fittingProblem.SolverEquationsCreateFinish()
 
-    problem = iron.Problem()
-    problemSpecification = [iron.ProblemClasses.FITTING,
-                            iron.ProblemTypes.DATA_FITTING,
-                            iron.ProblemSubtypes.STATIC_FITTING]
-    problem.CreateStart(problemUserNumber, problemSpecification)
-    problem.CreateFinish()
+    # Prescribe boundary conditions for the fitting problem
+    fittingBoundaryConditions = iron.BoundaryConditions()
+    fittingSolverEquations.BoundaryConditionsCreateStart(fittingBoundaryConditions)
+    fittingSolverEquations.BoundaryConditionsCreateFinish()
 
-    problem.ControlLoopCreateStart()
-    problem.ControlLoopCreateFinish()
+    # Calculate the stress field
+    equationsSet.DerivedVariableCalculate(variable)  # WHAT DOES THIS DO?
 
-    solver = iron.Solver()
-    problem.SolversCreateStart()
-    problem.SolverGet([iron.ControlLoopIdentifiers.NODE], 1, solver)
-    solver.outputType = iron.SolverOutputTypes.MONITOR
-    problem.SolversCreateFinish()
-
-    solverEquations = iron.SolverEquations()
-    problem.SolverEquationsCreateStart()
-    solver.SolverEquationsGet(solverEquations)
-    solverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
-    solverEquations.EquationsSetAdd(equationsSet)
-    problem.SolverEquationsCreateFinish()
-
-    boundaryConditions = iron.BoundaryConditions()
-    solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
-    solverEquations.BoundaryConditionsCreateFinish()
-
-    # self.equationsSet.DerivedVariableCalculate(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS)
-    problem.Solve()
-    problem.Finalise()
+    # Solve the fitting problem
+    fittingProblem.Solve()

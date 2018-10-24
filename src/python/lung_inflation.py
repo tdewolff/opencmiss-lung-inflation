@@ -7,6 +7,9 @@ import numpy as np
 from opencmiss.iron import iron
 from morphic.utils import convert_hermite_lagrange
 import mesh_tools
+import field_fitting
+
+solveExampleCube = True
 
 path = '/hpc/tdew803/Lung/Data/Pig_PE_Study_HRC/'
 subject = 'AP00157'
@@ -23,15 +26,36 @@ interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
 ##################################################################
 
-exelemFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exelem'
-exnodeFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exnode'
-coordinatesField = 'coordinates'
-displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
-#displacementFiles = './displacement/AP00149_d%s.nii'
+if solveExampleCube:
+    coordinatesField = 'Geometry'
+    exelemFile = './cube_hermite.exelem'
+    exnodeFile = './cube_hermite.exnode'
+    displacementFiles = './displacement/cube_d%s.nii'
+else:
+    coordinatesField = 'coordinates'
+    exelemFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exelem'
+    exnodeFile = path + subject + '/' + refPressure + 'cmH2O/Lung/FEMesh/Left_RefittedNoVersion.exnode'
+    displacementFiles = path + subject + '/reg_' + registration + '_d%s.nii'
 
-#exelemFile = './cube_hermite.exelem'
-#exnodeFile = './cube_hermite.exnode'
-#displacementFiles = './displacement/cube_d%s.nii'
+##################################################################
+
+if not solveExampleCube:
+    print('Subject:', subject)
+    print('Registration:', registration)
+print('Load dx...')
+dx, image_header = load(displacementFiles % ('x'))
+displacement = np.zeros((dx.shape[0], dx.shape[1], dx.shape[2], 3))
+displacement[:, :, :, 0] = dx
+print('Load dy...')
+displacement[:, :, :, 1], _ = load(displacementFiles % ('y'))
+print('Load dz...')
+displacement[:, :, :, 2], _ = load(displacementFiles % ('z'))
+pixdim = header.get_pixel_spacing(image_header)
+print('Image dimensions:', displacement.shape)
+print('Voxel dimensions:', pixdim)
+
+
+##################################################################
 
 def Coord2Pix(pixdim, x, y, z):
     # mesh coordinates (in mm) have:
@@ -43,10 +67,12 @@ def Coord2Pix(pixdim, x, y, z):
     #  y increasing from dorsal to ventral
     #  z increasing from cradal to caudal
     # where y has been shifted (by half its size in pixels?)
-    i = x / pixdim[0]
-    j = (256-y) / pixdim[1]
-    k = -z / pixdim[2]
-    return i, j, k
+    if not solveExampleCube:
+        x = x
+        y = 256 - y
+        z = -z
+    return x / pixdim[0], y / pixdim[1], z / pixdim[2]
+
 
 def TransformDisplacement(dx, dy, dz):
     # it appears that displacement data wth RAI orientation gives:
@@ -54,18 +80,23 @@ def TransformDisplacement(dx, dy, dz):
     #  y increasing from dorsal to ventral
     #  z increasing from cradal to caudal
     # but our mesh coordinate system has all of these reversed
-    return -dx, -dy, -dz
+    if solveExampleCube:
+        return dx, dy, dz
+    else:
+        return -dx, -dy, -dz
+
 
 def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
-    (x,y,z) = Coord2Pix(pixdim,X,Y,Z)
+    (x, y, z) = Coord2Pix(pixdim, X, Y, Z)
     x0 = np.floor(x)
     y0 = np.floor(y)
     z0 = np.floor(z)
     x1 = np.ceil(x)
     y1 = np.ceil(y)
     z1 = np.ceil(z)
-    if x0 < 0 or y0 < 0 or z0 < 0 or x1 >= displacement.shape[0] or y1 >= displacement.shape[1] or z1 >= displacement.shape[2]:
-        print(x0,y0,z0, x1,y1,z1)
+    if x0 < 0 or y0 < 0 or z0 < 0 or x1 >= displacement.shape[0] or y1 >= displacement.shape[1] or z1 >= \
+            displacement.shape[2]:
+        print(x0, y0, z0, x1, y1, z1)
         raise ValueError('TrilinearInterpolation: probe is outside displacement field')
     xd = 0.0
     yd = 0.0
@@ -85,7 +116,8 @@ def TrilinearInterpolation(displacement, pixdim, X, Y, Z):
     (dx, dy, dz) = c0 * (1 - zd) + c1 * zd
     return TransformDisplacement(dx, dy, dz)
 
-def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity):
+
+def Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density, gravity):
     # Get the number of computational nodes and this computational node number
     numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
 
@@ -136,6 +168,9 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
         basis.quadratureNumberOfGaussXi = [4] * 3
     basis.CreateFinish()
 
+    cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFile, exelemFile, coordinatesField, dimension=3,
+                                                              interpolation='hermite')
+    cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
     mesh, coordinates, node_nums, element_nums = mesh_tools.morphic_to_OpenCMISS(cubic_lagrange_morphic_mesh, region,
                                                                                  basis, meshUserNumber,
                                                                                  dimension=3,
@@ -181,15 +216,6 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     fibreField.GeometricFieldSet(geometricField)
     fibreField.VariableLabelSet(iron.FieldVariableTypes.U, "Fibre")
     fibreField.CreateFinish()
-
-    # stressField = iron.Field()
-    # stressField.CreateStart(stressFieldUserNumber, region)
-    # stressField.MeshDecompositionSet(decomposition)
-    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 1, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 2, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    # stressField.ComponentInterpolationSet(iron.FieldVariableTypes.U, 3, iron.FieldInterpolationTypes.ELEMENT_BASED)
-    # stressField.VariableLabelSet(iron.FieldVariableTypes.U, "Cauchy Stress")
-    # stressField.CreateFinish()
 
     ##################################################################
     # Setup Mooney-Rivlin equations
@@ -290,9 +316,9 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     nonLinearSolver.outputType = iron.SolverOutputTypes.MONITOR
     nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
     nonLinearSolver.NewtonLinearSolverGet(linearSolver)
-    #nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
-    #nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
-    #nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
+    # nonLinearSolver.NewtonAbsoluteToleranceSet(1e-11)
+    # nonLinearSolver.NewtonSolutionToleranceSet(1e-11)
+    # nonLinearSolver.NewtonRelativeToleranceSet(1e-11)
     linearSolver.linearType = iron.LinearSolverTypes.DIRECT
     # linearSolver.libraryType = iron.SolverLibraries.LAPACK
     problem.SolversCreateFinish()
@@ -315,11 +341,14 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     mesh.NodesGet(1, nodes)
     for nid in node_nums:
         if nodes.NodeOnBoundaryGet(nid) == iron.MeshBoundaryTypes.ON:
-            X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+            X = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                     1,
                                                      nid, 1)
-            Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+            Y = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                     1,
                                                      nid, 2)
-            Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1, 1,
+            Z = geometricField.ParameterSetGetNodeDP(iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 1,
+                                                     1,
                                                      nid, 3)
 
             (dx, dy, dz) = TrilinearInterpolation(displacement, pixdim, X, Y, Z)
@@ -331,7 +360,7 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
             boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
                                        iron.BoundaryConditionsTypes.FIXED, dz)
 
-            print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X,Y,Z, dx,dy,dz))
+            print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X, Y, Z, dx, dy, dz))
 
     solverEquations.BoundaryConditionsCreateFinish()
 
@@ -339,6 +368,11 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
     # Solve!
     ##################################################################
     problem.Solve()
+
+    field_fitting.FitField("CauchyStress", iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, region,
+                           decomposition, geometricField, equationsSet)
+    field_fitting.FitField("GreenLagrangeStrain", iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN, region,
+                           decomposition, geometricField, equationsSet)
 
     # Expected values for strain tensor in the cube example are:
     # 0.22 0 0
@@ -380,12 +414,15 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
                                                                               1, eid + 1, [xiX, xiY, xiZ], 3)
                     if tuple(coords) not in evaluatedCoords:
                         evaluatedCoords.add(tuple(coords))
-                        strain = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN,
-                                                                  eid, [xiX, xiY, xiZ], valuesSizes)
-                        stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS, eid,
+                        strain = equationsSet.TensorInterpolateXi(
+                            iron.EquationsSetDerivedTensorTypes.GREEN_LAGRANGE_STRAIN,
+                            eid, [xiX, xiY, xiZ], valuesSizes)
+                        stress = equationsSet.TensorInterpolateXi(iron.EquationsSetDerivedTensorTypes.CAUCHY_STRESS,
+                                                                  eid,
                                                                   [xiX, xiY, xiZ], valuesSizes)
 
-                        #print('Coord:', [xiX, xiY, xiZ], coords)
+                        print('Coord:', [xiX, xiY, xiZ], coords)
+                        print(stress)
                         if np.isfinite(strain).all() and np.isfinite(stress).all():
                             eigStrain = np.linalg.eigvals(strain)
                             eigStress = np.linalg.eigvals(stress)
@@ -395,13 +432,15 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
 
                             nid += 1
                             valuesFile.write(' Node: %d\n' % nid)
-                            valuesFile.write('  %E %E %E %E %E\n' % (coords[0], coords[1], coords[2], avgStrain, avgStress))
+                            valuesFile.write(
+                                '  %E %E %E %E %E\n' % (coords[0], coords[1], coords[2], avgStrain, avgStress))
 
-                            #print('Strain:', strain, eigStrain, avgStrain)
-                            #print('Stress:', stress, eigStress, avgStress)
+                            # print('Strain:', strain, eigStrain, avgStrain)
+                            # print('Stress:', stress, eigStress, avgStress)
                         else:
-                            print('Strain or stress had non-finite values at element ID %d and coords %E %E %E' % (eid, coords[0], coords[1], coords[2]))
-                        #print()
+                            print('Strain or stress had non-finite values at element ID %d and coords %E %E %E' % (
+                                eid, coords[0], coords[1], coords[2]))
+                        # print()
 
     valuesFile.close()
 
@@ -413,34 +452,8 @@ def Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c
 if not os.path.exists("./results"):
     os.makedirs("./results")
 
-print('Subject:', subject)
-print('Registration:', registration)
-
-print('Load dx...')
-dx, image_header = load(displacementFiles % ('x'))
-displacement = np.zeros((dx.shape[0], dx.shape[1], dx.shape[2], 3))
-displacement[:, :, :, 0] = dx
-print('Load dy...')
-displacement[:, :, :, 1], _ = load(displacementFiles % ('y'))
-print('Load dz...')
-displacement[:, :, :, 2], _ = load(displacementFiles % ('z'))
-pixdim = header.get_pixel_spacing(image_header)
-print('Image dimensions:', displacement.shape)
-print('Voxel dimensions:', pixdim)
-
-cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFile, exelemFile, coordinatesField, dimension=3,
-                                                          interpolation='hermite')
-# flip the lung mesh so that it is in the positive octant (+x, +y, +z), with:
-#  x increasing from right to left
-#  y increasing from dorsal to ventral
-#  z increasing from cradal to caudal
-#for node in cubic_hermite_morphic_mesh.nodes:
-#    node.values[1] = -node.values[1]
-#    node.values[2] = -node.values[2]
-#    node.values[1,0] += 256.0
-cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
-
-fields = Run(cubic_lagrange_morphic_mesh, interpolation, displacement, pixdim, c10, c01, k, density, gravity)
+fields = Run(exnodeFile, exelemFile, coordinatesField, interpolation, displacement, pixdim, c10, c01, k, density,
+             gravity)
 fields.NodesExport("./results/out", "FORTRAN")
 fields.ElementsExport("./results/out", "FORTRAN")
 fields.Finalise()

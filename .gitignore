@@ -2,3 +2,4 @@
 .idea/*
 src/python/displacement/AP00149_d*
 src/python/results/*
+src/python/__pycache__/*
