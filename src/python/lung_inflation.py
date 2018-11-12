@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-from medpy.io import load
-from medpy.io import header
 import numpy as np
+from enum import Enum
+import time
+import os.path
 from opencmiss.iron import iron
+from medpy.io import load, save, header
 from morphic.utils import convert_hermite_lagrange
 import mesh_tools
-from enum import Enum
+import matplotlib.pyplot as plt
 
 class FittingVariableTypes(Enum):
     CAUCHY_STRESS = 1
@@ -19,23 +21,93 @@ class FittingVariableTypes(Enum):
     AVERAGE_STRAIN = 8
     JACOBIAN = 9
 
+class Displacement:
+    # We assume that the orientation of displacement data has:
+    #  x increasing from right to left
+    #  y increasing from dorsal to ventral
+    #  z increasing from cradal to caudal
+    def __init__(self, dxFilename, dyFilename, dzFilename):
+        print('Load dx...')
+        dx, image_header = load(dxFilename)
+        self.displacement = np.zeros((dx.shape[0], dx.shape[1], dx.shape[2], 3))
+        self.displacement[:, :, :, 0] = dx
+        print('Load dy...')
+        self.displacement[:, :, :, 1], _ = load(dyFilename)
+        print('Load dz...')
+        self.displacement[:, :, :, 2], _ = load(dzFilename)
+        self.pixdim = header.get_pixel_spacing(image_header)
+        print('Image dimensions:', self.displacement.shape)
+        print('Voxel dimensions:', self.pixdim)
+
+    def Coord(self, X, Y, Z, transformation):
+        # X,Y,Z are in mm
+        # x,y,z are in pixels
+        x = X / self.pixdim[0]
+        y = Y / self.pixdim[1]
+        z = Z / self.pixdim[2]
+        (x,y,z,_) = np.matmul(transformation, [x,y,z,1])
+
+        # dX,dY,dZ are in mm
+        (dX,dY,dZ) = self.trilinearInterpolation(x,y,z)
+
+        # transform back but leave out translation for displacement data
+        (dX,dY,dZ,_) = np.matmul(np.linalg.inv(transformation), [dX,dY,dZ,0])
+        return dX,dY,dZ
+
+    def Pixel(self, x, y, z):
+        # x,y,z are in pixels
+        # dX,dY,dZ are in mm
+        (dX,dY,dZ) = self.trilinearInterpolation(x,y,z)
+        dx = dX / self.pixdim[0]
+        dy = dY / self.pixdim[1]
+        dz = dZ / self.pixdim[2]
+        return dx,dy,dz
+
+    # input in px, output in (relative) mm
+    def trilinearInterpolation(self, x, y, z):
+        x0 = int(np.floor(x))
+        y0 = int(np.floor(y))
+        z0 = int(np.floor(z))
+        x1 = int(np.ceil(x))
+        y1 = int(np.ceil(y))
+        z1 = int(np.ceil(z))
+        if x0 < 0 or y0 < 0 or z0 < 0 or x1 >= self.displacement.shape[0] or y1 >= self.displacement.shape[1] or \
+                z1 >= self.displacement.shape[2]:
+            raise ValueError(
+                'TrilinearInterpolation: probe is outside displacement field: (%.2f,%.2f,%.2f) px' % (x, y, z))
+        xd = 0.0
+        yd = 0.0
+        zd = 0.0
+        if x1 > x0:
+            xd = (x - x0) / (x1 - x0)
+        if y1 > y0:
+            yd = (y - y0) / (y1 - y0)
+        if z1 > z0:
+            zd = (z - z0) / (z1 - z0)
+        c00 = self.displacement[x0, y0, z0] * (1 - xd) + self.displacement[x1, y0, z0] * xd
+        c01 = self.displacement[x0, y0, z1] * (1 - xd) + self.displacement[x1, y0, z1] * xd
+        c10 = self.displacement[x0, y1, z0] * (1 - xd) + self.displacement[x1, y1, z0] * xd
+        c11 = self.displacement[x0, y1, z1] * (1 - xd) + self.displacement[x1, y1, z1] * xd
+        c0 = c00 * (1 - yd) + c10 * yd
+        c1 = c01 * (1 - yd) + c11 * yd
+        return c0 * (1 - zd) + c1 * zd
+
 class LungInflation:
     def __init__(self):
         self.c10 = 5000.0  # in Pa
         self.c01 = 2000.0  # in Pa
-        self.k = 6000.0  # in Pa
+        self.d1 = 3000.0  # in Pa
         self.density = 1000.0  # in kg m^-3
         self.gravity = [0.0, 0.0, 0.0]  # in m s^-2
 
         self.interpolation = iron.BasisInterpolationSpecifications.CUBIC_LAGRANGE
 
-        self.transformLungCoordinates = False
         self.mesh = None
         self.coordinates = None
         self.node_nums = None
         self.element_nums = None
         self.displacement = None
-        self.pixdim = None
+        self.transformation = None
 
         self.decomposition = None
         self.geometricField = None
@@ -79,97 +151,27 @@ class LungInflation:
             self.basis.quadratureNumberOfGaussXi = [4] * 3
         self.basis.CreateFinish()
 
-    def SetMaterialParameters(self, c10, c01, k, density):
+    def SetMaterialParameters(self, c10, c01, d1, density):
         self.c10 = c10
         self.c01 = c01
-        self.k = k
+        self.d1 = d1
         self.density = density
 
     def SetGravity(self, zForce):
         self.gravity = [0.0, 0.0, -zForce]  # in m s^-2
 
-    def LoadHermiteMesh(self, exelemFilename, exnodeFilename, coordinatesFieldName, transformLungCoordinates=False):
-        meshUserNumber = 1
+    def SetDisplacement(self, displacement):
+        self.displacement = displacement
 
-        self.transformLungCoordinates = transformLungCoordinates
+    def LoadHermiteMesh(self, exelemFilename, exnodeFilename, coordinatesFieldName, transformation):
+        meshUserNumber = 1
+        self.transformation = transformation
+
         cubic_hermite_morphic_mesh = mesh_tools.exfile_to_morphic(exnodeFilename, exelemFilename, coordinatesFieldName,
                                                                   dimension=3, interpolation='hermite')
         cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
         self.mesh, self.coordinates, self.node_nums, self.element_nums = mesh_tools.morphic_to_OpenCMISS(
-            cubic_lagrange_morphic_mesh,
-            self.region, self.basis,
-            meshUserNumber,
-            dimension=3,
-            interpolation='cubic')
-
-    def LoadDisplacements(self, dxFilename, dyFilename, dzFilename):
-        print('Load dx...')
-        dx, image_header = load(dxFilename)
-        self.displacement = np.zeros((dx.shape[0], dx.shape[1], dx.shape[2], 3))
-        self.displacement[:, :, :, 0] = dx
-        print('Load dy...')
-        self.displacement[:, :, :, 1], _ = load(dyFilename)
-        print('Load dz...')
-        self.displacement[:, :, :, 2], _ = load(dzFilename)
-        self.pixdim = header.get_pixel_spacing(image_header)
-        print('Image dimensions:', self.displacement.shape)
-        print('Voxel dimensions:', self.pixdim)
-
-    def TrilinearInterpolation(self, X, Y, Z):
-        # lung mesh coordinates (in mm) have:
-        #  x increasing from right to left
-        #  y increasing from ventral to dorsal
-        #  z increasing from caudal to cradal
-        # pixel coordinates (in px) have:
-        #  x increasing from right to left
-        #  y increasing from dorsal to ventral
-        #  z increasing from cradal to caudal
-        # where y has been shifted (by half its size in pixels?)
-        if self.transformLungCoordinates:
-            X = X
-            Y = 256 - Y
-            Z = -Z
-        x = X / self.pixdim[0]
-        y = Y / self.pixdim[1]
-        z = Z / self.pixdim[2]
-
-        x0 = np.floor(x)
-        y0 = np.floor(y)
-        z0 = np.floor(z)
-        x1 = np.ceil(x)
-        y1 = np.ceil(y)
-        z1 = np.ceil(z)
-        if x0 < 0 or y0 < 0 or z0 < 0 or x1 >= self.displacement.shape[0] or y1 >= self.displacement.shape[1] or z1 >= \
-                self.displacement.shape[2]:
-            print(x0, y0, z0, x1, y1, z1)
-            raise ValueError('TrilinearInterpolation: probe is outside displacement field')
-        xd = 0.0
-        yd = 0.0
-        zd = 0.0
-        if x1 > x0:
-            xd = (x - x0) / (x1 - x0)
-        if y1 > y0:
-            yd = (y - y0) / (y1 - y0)
-        if z1 > z0:
-            zd = (z - z0) / (z1 - z0)
-        c00 = self.displacement[x0, y0, z0] * (1 - xd) + self.displacement[x1, y0, z0] * xd
-        c01 = self.displacement[x0, y0, z1] * (1 - xd) + self.displacement[x1, y0, z1] * xd
-        c10 = self.displacement[x0, y1, z0] * (1 - xd) + self.displacement[x1, y1, z0] * xd
-        c11 = self.displacement[x0, y1, z1] * (1 - xd) + self.displacement[x1, y1, z1] * xd
-        c0 = c00 * (1 - yd) + c10 * yd
-        c1 = c01 * (1 - yd) + c11 * yd
-        (dx, dy, dz) = c0 * (1 - zd) + c1 * zd
-
-        # it appears that displacement data wth RAI orientation gives:
-        #  x increasing from left to right
-        #  y increasing from dorsal to ventral
-        #  z increasing from cradal to caudal
-        # but our mesh coordinate system has all of these reversed
-        if self.transformLungCoordinates:
-            dx = -dx
-            dy = -dy
-            dz = -dz
-        return dx, dy, dz
+            cubic_lagrange_morphic_mesh, self.region, self.basis, meshUserNumber, dimension=3, interpolation='cubic')
 
     def Setup(self):
         decompositionUserNumber = 1
@@ -252,7 +254,7 @@ class LungInflation:
         materialField.ComponentValuesInitialiseDP(
             iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 2, self.c01)
         materialField.ComponentValuesInitialiseDP(
-            iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, self.k)
+            iron.FieldVariableTypes.U, iron.FieldParameterSetTypes.VALUES, 3, self.d1)
         materialField.ComponentValuesInitialiseDP(
             iron.FieldVariableTypes.V, iron.FieldParameterSetTypes.VALUES, 1, self.density)
 
@@ -375,7 +377,7 @@ class LungInflation:
                                                                   1,
                                                                   nid, 3)
 
-                    (dx, dy, dz) = self.TrilinearInterpolation(X, Y, Z)
+                    (dx,dy,dz) = self.displacement.Coord(X,Y,Z, self.transformation)
 
                     boundaryConditions.AddNode(self.dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 1,
                                                iron.BoundaryConditionsTypes.FIXED, dx * loadRatio)
@@ -384,7 +386,7 @@ class LungInflation:
                     boundaryConditions.AddNode(self.dependentField, iron.FieldVariableTypes.U, 1, 1, nid, 3,
                                                iron.BoundaryConditionsTypes.FIXED, dz * loadRatio)
 
-                    print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid, X, Y, Z, dx, dy, dz))
+                    print('BC set on node %d at %.2f %.2f %.2f += %f %f %f' % (nid,X,Y,Z,dx,dy,dz))
 
             solverEquations.BoundaryConditionsCreateFinish()
 
@@ -505,7 +507,7 @@ class LungInflation:
                                                                 eigs[2])
                 elif numComponents == 1:
                     eigs = np.linalg.eigvals(tensor)
-                    if FittingVariableTypes.JACOBIAN:
+                    if variable == FittingVariableTypes.JACOBIAN:
                         value = np.prod(eigs)
                     else:
                         value = np.mean(eigs)
@@ -611,3 +613,81 @@ class LungInflation:
         self.fittingFinalisers.append(fittingDependentField)
         self.fittingFinalisers.append(fittingEquationsSet)
         self.fittingFinalisers.append(fittingField)
+
+
+def NodalRegistrationError(referenceFilename, deformedFilename, coordinatesFieldName, transformation, displacement, nids=[]):
+    reference = mesh_tools.exfile.Exnode(referenceFilename)
+    deformed = mesh_tools.exfile.Exnode(deformedFilename)
+
+    if len(nids) == 0:
+        nids = set(reference.nodeids) & set(deformed.nodeids)
+        if len(nids) == 0:
+            raise ValueError("reference and deformed exnode files have no similar nodes")
+
+    print("Node IDs:", nids)
+
+    eXs = []
+    eYs = []
+    eZs = []
+    errors = []
+    for nid in nids:
+        X = reference.node_value(coordinatesFieldName, 'x', nid)
+        Y = reference.node_value(coordinatesFieldName, 'y', nid)
+        Z = reference.node_value(coordinatesFieldName, 'z', nid)
+        x = deformed.node_value(coordinatesFieldName, 'x', nid)
+        y = deformed.node_value(coordinatesFieldName, 'y', nid)
+        z = deformed.node_value(coordinatesFieldName, 'z', nid)
+
+        (dX,dY,dZ) = displacement.Coord(X,Y,Z,transformation)
+        eX = X+dX-x
+        eY = Y+dY-y
+        eZ = Z+dZ-z
+        error = np.sqrt(eX**2 + eY**2 + eZ**2)
+        eXs.append(eX)
+        eYs.append(eY)
+        eZs.append(eZ)
+        errors.append(error)
+        print('%d: real %f %f %f -- reg %f %f %f: e=%f' % (nid, x-X,y-Y,z-Z, dX,dY,dZ, error))
+    print('Error X: ', np.mean(eXs), '±', np.std(eXs))
+    print('Error Y: ', np.mean(eYs), '±', np.std(eYs))
+    print('Error Z: ', np.mean(eZs), '±', np.std(eZs))
+    print('Error total: ', np.mean(errors), '±', np.std(errors))
+
+
+def DensityHistogram2D(frcFilename, frcMaskFilename, tlcFilename, displacement, bounds=(-1100,-500), outputFilename=''):
+    if outputFilename == '' or not os.path.isfile(outputFilename):
+        print('Load FRC...')
+        frc, _ = load(frcFilename)
+        print('Load FRC mask...')
+        frcMask, _ = load(frcMaskFilename)
+        print('Load TLC...')
+        tlc, _ = load(tlcFilename)
+
+        print('Generating histogram...')
+        start = time.time()
+        hist = np.zeros((bounds[1]-bounds[0]+1, bounds[1]-bounds[0]+1))
+        for z in range(frc.shape[2]):
+            if z == 0:
+                print('Calculating %d/%d' % (z+1, frc.shape[2]))
+            else:
+                print('Calculating %d/%d -- %3.1f min processing' % (z+1, frc.shape[2], (time.time()-start)/60.0))
+
+            for y in range(frc.shape[1]):
+                for x in range(frc.shape[0]):
+                    if frcMask[x,y,z] > 0:
+                        frcDensity = frc[x,y,z]
+                        if bounds[0] <= frcDensity <= bounds[1]:
+                            (dx,dy,dz) = displacement.Pixel(x,y,z)
+                            tlcX = int(x+dx+0.5)
+                            tlcY = int(y+dy+0.5)
+                            tlcZ = int(z+dz+0.5)
+                            if 0 <= tlcX < tlc.shape[0] and 0 <= tlcY < tlc.shape[1] and 0 <= tlcZ < tlc.shape[2]:
+                                tlcDensity = tlc[tlcX, tlcY, tlcZ]
+                                if bounds[0] <= tlcDensity <= bounds[1]:
+                                    hist[tlcDensity-bounds[0], frcDensity-bounds[0]] += 1
+
+        print('Saving histogram to', outputFilename)
+        save(hist, outputFilename)
+    else:
+        hist, _ = load(outputFilename)
+    return hist
