@@ -8,7 +8,6 @@ from opencmiss.iron import iron
 from medpy.io import load, save, header
 from morphic.utils import convert_hermite_lagrange
 import mesh_tools
-import matplotlib.pyplot as plt
 
 class FittingVariableTypes(Enum):
     CAUCHY_STRESS = 1
@@ -116,6 +115,7 @@ class LungInflation:
         self.equationsSet = None
 
         self.fittingUserNumberCounter = 20
+        self.fittingFields = []
         self.fittingFinalisers = []
 
         coordinateSystemUserNumber = 1
@@ -172,6 +172,9 @@ class LungInflation:
         cubic_lagrange_morphic_mesh = convert_hermite_lagrange(cubic_hermite_morphic_mesh, tol=1e-9)
         self.mesh, self.coordinates, self.node_nums, self.element_nums = mesh_tools.morphic_to_OpenCMISS(
             cubic_lagrange_morphic_mesh, self.region, self.basis, meshUserNumber, dimension=3, interpolation='cubic')
+
+    def AddFittingField(self, name, variable):
+        self.fittingFields.append((name, variable))
 
     def Setup(self):
         decompositionUserNumber = 1
@@ -395,11 +398,8 @@ class LungInflation:
             ##################################################################
             problem.Solve()
 
-            self.FitField("CauchyStress", FittingVariableTypes.CAUCHY_STRESS)
-            self.FitField("GreenLagrangeStrain", FittingVariableTypes.GREEN_LAGRANGE_STRAIN)
-            self.FitField("AverageCauchyStress", FittingVariableTypes.AVERAGE_STRESS)
-            self.FitField("AverageGreenLagrangeStrain", FittingVariableTypes.AVERAGE_STRAIN)
-            self.FitField("Jacobian", FittingVariableTypes.JACOBIAN)
+            for name, variable in self.fittingFields:
+                self.FitField(name, variable)
 
             fields = iron.Fields()
             fields.CreateRegion(self.region)
@@ -629,6 +629,7 @@ def NodalRegistrationError(referenceFilename, deformedFilename, coordinatesField
     eXs = []
     eYs = []
     eZs = []
+    deformations = []
     errors = []
     for nid in nids:
         X = reference.node_value(coordinatesFieldName, 'x', nid)
@@ -642,6 +643,7 @@ def NodalRegistrationError(referenceFilename, deformedFilename, coordinatesField
         eX = X+dX-x
         eY = Y+dY-y
         eZ = Z+dZ-z
+        deformations.append(np.sqrt((x-X)**2 + (y-Y)**2 + (z-Z)**2))
         error = np.sqrt(eX**2 + eY**2 + eZ**2)
         eXs.append(eX)
         eYs.append(eY)
@@ -652,6 +654,8 @@ def NodalRegistrationError(referenceFilename, deformedFilename, coordinatesField
     print('Error Y: ', np.mean(eYs), '±', np.std(eYs))
     print('Error Z: ', np.mean(eZs), '±', np.std(eZs))
     print('Error total: ', np.mean(errors), '±', np.std(errors))
+    print('Deformations total: ', np.mean(deformations), '±', np.std(deformations))
+    return errors, deformations
 
 
 def DensityHistogram2D(frcFilename, frcMaskFilename, tlcFilename, displacement, bounds=(-1100,-500), outputFilename=''):

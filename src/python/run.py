@@ -29,17 +29,20 @@ displacement = Displacement(displacementFiles % 'x', displacementFiles % 'y', di
 # Evaluate registration error AP00157 Left
 refVesselsFilename = path + subject + '/' + refPressure + '/Vessel/AP00157_9_4cmH2O_ArteryCenterLowerLeft.exnode'
 defVesselsFilename = path + subject + '/' + defPressure + '/Vessel/AP00157_15cmH2O_ArteryCenterLowerLeft_Reordered.exnode'
-NodalRegistrationError(refVesselsFilename, defVesselsFilename, 'coordinates', transformationLungVessels, displacement,
+errors_9, deformation_9 = NodalRegistrationError(refVesselsFilename, defVesselsFilename, 'coordinates', transformationLungVessels, displacement,
                                nids=[1,2,3,4,6,7,8,11,13,14,15,21,22,25,27,28,36,65,66,78,79,80,88,89,103,104,113,114,
                                      115,116])
 
 # Evaluate registration error AP00157 Right
 refVesselsFilename = path + subject + '/' + refPressure + '/Vessel/AP00157_9_4cmH2O_ArteryCenterLowerRight_Reordered.exnode'
 defVesselsFilename = path + subject + '/' + defPressure + '/Vessel/AP00157_15cmH2O_ArteryCenterLowerRight.exnode'
-NodalRegistrationError(refVesselsFilename, defVesselsFilename, 'coordinates', transformationLungVessels, displacement,
+errors_15, deformation_15 = NodalRegistrationError(refVesselsFilename, defVesselsFilename, 'coordinates', transformationLungVessels, displacement,
                                nids=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23,24,25,26,27,29,30,31,32,
                                      33,34,35,36,37,39,40,41,43,44,45,47,48,49,50,51,52,55,56,57,58,60,63,64,65,66,67,
                                      68,69,71,72,74,76,80,85,91,92,98,100,106,107,108,112,115,116,119,120])
+
+print(np.mean(errors_9 + errors_15), np.std(errors_9 + errors_15))
+print(np.mean(deformation_9 + deformation_15), np.std(deformation_9 + deformation_15))
 
 # Plot Joint Density Histogram
 # frcFilename = path + subject + '/' + refPressure + '/Raw/' + subject + '.nii'
@@ -66,5 +69,10 @@ NodalRegistrationError(refVesselsFilename, defVesselsFilename, 'coordinates', tr
 # lungInflation = LungInflation()
 # lungInflation.SetDisplacement(displacement)
 # lungInflation.LoadHermiteMesh(exelemFilename, exnodeFilename, 'coordinates', transformationLungMesh)
+# lungInflation.AddFittingField("CauchyStress", FittingVariableTypes.CAUCHY_STRESS)
+# lungInflation.AddFittingField("GreenLagrangeStrain", FittingVariableTypes.GREEN_LAGRANGE_STRAIN)
+# lungInflation.AddFittingField("AverageCauchyStress", FittingVariableTypes.AVERAGE_STRESS)
+# lungInflation.AddFittingField("AverageGreenLagrangeStrain", FittingVariableTypes.AVERAGE_STRAIN)
+# lungInflation.AddFittingField("Jacobian", FittingVariableTypes.JACOBIAN)
 # lungInflation.Setup()
-# lungInflation.Solve("./results/reg_" + registration, 1)
+# lungInflation.Solve("./results/out", 1)
